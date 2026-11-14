@@ -121,15 +121,32 @@ public sealed class PricingCatalogService
             PricingSortField.ScoreDesc => query
                 .OrderByDescending(m => m.IntelligenceScore ?? 0m)
                 .ThenBy(m => m.InputPerMillion),
-            PricingSortField.InputPriceAsc => query
-                .OrderBy(m => useFastMode ? (m.FastInputPerMillion ?? m.InputPerMillion) : m.InputPerMillion)
-                .ThenBy(m => useFastMode ? (m.FastOutputPerMillion ?? m.OutputPerMillion) : m.OutputPerMillion),
-            PricingSortField.OutputPriceAsc => query
-                .OrderBy(m => useFastMode ? (m.FastOutputPerMillion ?? m.OutputPerMillion) : m.OutputPerMillion)
-                .ThenBy(m => useFastMode ? (m.FastInputPerMillion ?? m.InputPerMillion) : m.InputPerMillion),
+            PricingSortField.InputPriceAsc => useFastMode
+                ? query
+                    .OrderBy(m => !m.FastInputPerMillion.HasValue)
+                    .ThenBy(m => m.FastInputPerMillion ?? decimal.MaxValue)
+                    .ThenBy(m => m.FastOutputPerMillion ?? decimal.MaxValue)
+                : query
+                    .OrderBy(m => m.InputPerMillion)
+                    .ThenBy(m => m.OutputPerMillion),
+            PricingSortField.OutputPriceAsc => useFastMode
+                ? query
+                    .OrderBy(m => !m.FastOutputPerMillion.HasValue)
+                    .ThenBy(m => m.FastOutputPerMillion ?? decimal.MaxValue)
+                    .ThenBy(m => m.FastInputPerMillion ?? decimal.MaxValue)
+                : query
+                    .OrderBy(m => m.OutputPerMillion)
+                    .ThenBy(m => m.InputPerMillion),
             PricingSortField.TotalTaskCostAsc => query
-                .OrderBy(m => TaskCostCalculator.CalculateCost(m, taskInputTokens, taskCachedTokens, taskOutputTokens, useFastMode))
-                .ThenByDescending(m => m.IntelligenceScore ?? 0m),
+                .Select(m => new
+                {
+                    Model = m,
+                    Cost = TaskCostCalculator.CalculateCostOrNull(m, taskInputTokens, taskCachedTokens, taskOutputTokens, useFastMode)
+                })
+                .OrderBy(x => !x.Cost.HasValue)
+                .ThenBy(x => x.Cost ?? decimal.MaxValue)
+                .ThenByDescending(x => x.Model.IntelligenceScore ?? 0m)
+                .Select(x => x.Model),
             PricingSortField.ContextDesc => query
                 .OrderByDescending(m => m.ContextTokens)
                 .ThenBy(m => m.InputPerMillion),

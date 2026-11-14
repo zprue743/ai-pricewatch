@@ -33,7 +33,8 @@ var noCacheModel = sampleFastModel with { CachedInputPerMillion = null, FastInpu
 // Task 1: Standard & Fast mode cost calculation
 AssertEqual(0.130m, TaskCostCalculator.CalculateCost(sampleFastModel, 100_000, 200_000, 50_000, useFastMode: false), "Standard cost math");
 AssertEqual(0.255m, TaskCostCalculator.CalculateCost(sampleFastModel, 100_000, 200_000, 50_000, useFastMode: true), "Fast mode cost math");
-AssertEqual(0.050m, TaskCostCalculator.CalculateCost(noCacheModel, 100_000, 100_000, 0, useFastMode: true), "Null cached & fast price fallback");
+AssertEqual((decimal?)null, TaskCostCalculator.CalculateCostOrNull(noCacheModel, 100_000, 100_000, 0, useFastMode: true), "Absent fast price returns null in Fast mode");
+AssertEqual("N/A", TaskCostCalculator.FormatCost((decimal?)null), "Null cost formats as N/A");
 AssertEqual(0m, TaskCostCalculator.CalculateCost(sampleFastModel, -5000, -1000, -2000), "Negative tokens clamped to 0");
 AssertEqual("$0.0000", TaskCostCalculator.FormatCost(0m), "Zero cost format");
 AssertEqual("<$0.0001", TaskCostCalculator.FormatCost(0.00004m), "Sub-basis-point cost format");
@@ -257,5 +258,40 @@ AssertEqual("N/A", partialRow.ScoreDisplay, "Row score displays N/A when missing
 
 var malformedCatalog = PricingCatalogService.FromJson("{ invalid json [");
 AssertEqual(0, malformedCatalog.AllModels.Count, "Malformed JSON does not crash startup and returns empty catalog");
+
+// PW-02: Fast/Priority Pricing Semantics (Strict N/A, no 2x multiplier)
+var noFastEntry = new ModelPricingEntry(
+    "cheap-no-fast", "Cheap No Fast", "OpenAI", TaskTier.Fast,
+    InputPerMillion: 0.05m, CachedInputPerMillion: 0.01m, OutputPerMillion: 0.10m,
+    ContextTokens: 128000, Notes: "No fast mode");
+var verifiedFastEntry = new ModelPricingEntry(
+    "verified-fast", "Verified Fast", "Anthropic", TaskTier.Balanced,
+    InputPerMillion: 2.00m, CachedInputPerMillion: 0.10m, OutputPerMillion: 10.00m,
+    ContextTokens: 200000, Notes: "Has verified fast",
+    FastInputPerMillion: 4.00m, FastOutputPerMillion: 20.00m);
+
+var fastCatalog = new PricingCatalogService([noFastEntry, verifiedFastEntry]);
+var fastSorted = fastCatalog.Query(sort: PricingSortField.TotalTaskCostAsc, useFastMode: true);
+AssertEqual("verified-fast", fastSorted[0].Id, "Fast mode TotalTaskCostAsc ranks verified Fast model ahead of N/A model");
+AssertEqual("cheap-no-fast", fastSorted[1].Id, "Fast mode TotalTaskCostAsc pushes N/A Fast model to the end");
+
+var fastVm = new HudViewModel(fastCatalog, new UserPreferencesStore(Path.Combine(Path.GetTempPath(), $"aipw-pw02-{Guid.NewGuid():N}.json")));
+fastVm.IsFastMode = true;
+var noFastRow = fastVm.VisibleModels.First(m => m.Id == "cheap-no-fast");
+var verifiedFastRow = fastVm.VisibleModels.First(m => m.Id == "verified-fast");
+AssertEqual("N/A", noFastRow.FastInOutDisplay, "Absent Fast pricing displays N/A");
+AssertEqual("N/A", noFastRow.EstimatedTaskCostDisplay, "Absent Fast task cost displays N/A in Fast mode");
+AssertTrue(!noFastRow.IsCheapestInView, "Model with N/A Fast pricing is never marked cheapest in Fast mode");
+AssertTrue(verifiedFastRow.IsCheapestInView, "Verified Fast model is marked cheapest in Fast mode");
+
+// OpenRouterPriceParser must NOT derive 2x Fast pricing when updating standard rates
+var openRouterFastMerged = OpenRouterPriceParser.MergeLivePrices(
+    [noFastEntry, verifiedFastEntry],
+    """{ "data": [ { "id": "openai/cheap-no-fast", "pricing": { "prompt": "0.00000010", "completion": "0.00000020" } }, { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000300", "completion": "0.00001500" } } ] }""",
+    out int fastUpdatedCount);
+AssertEqual(2, fastUpdatedCount, "Updates standard prices for both models");
+AssertEqual((decimal?)null, openRouterFastMerged[0].FastInputPerMillion, "OpenRouter update does not manufacture FastInputPerMillion");
+AssertEqual((decimal?)null, openRouterFastMerged[0].FastOutputPerMillion, "OpenRouter update does not manufacture FastOutputPerMillion");
+AssertEqual(4.00m, openRouterFastMerged[1].FastInputPerMillion, "OpenRouter update preserves existing verified FastInputPerMillion without ratio scaling");
 
 Console.WriteLine($"All tests passed ({passed} assertions).");

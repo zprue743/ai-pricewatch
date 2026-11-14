@@ -375,18 +375,21 @@ public sealed class HudViewModel : INotifyPropertyChanged
             .Where(e => !_hiddenModelIds.Contains(e.Id))
             .ToList();
 
-        decimal? minTaskCost = nonHiddenInView.Count > 0
-            ? nonHiddenInView.Min(e =>
-                TaskCostCalculator.CalculateCost(e, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode))
-            : null;
+        List<decimal> comparableCosts = nonHiddenInView
+            .Select(e => TaskCostCalculator.CalculateCostOrNull(e, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode))
+            .Where(c => c.HasValue)
+            .Select(c => c!.Value)
+            .ToList();
+
+        decimal? minTaskCost = comparableCosts.Count > 0 ? comparableCosts.Min() : null;
 
         bool cheapestAssigned = false;
         var rows = new List<ModelRowViewModel>(filtered.Count);
         foreach (ModelPricingEntry entry in filtered)
         {
             bool isHidden = _hiddenModelIds.Contains(entry.Id);
-            decimal cost = TaskCostCalculator.CalculateCost(entry, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode);
-            bool isCheapest = !isHidden && !cheapestAssigned && minTaskCost.HasValue && cost == minTaskCost.Value;
+            decimal? cost = TaskCostCalculator.CalculateCostOrNull(entry, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode);
+            bool isCheapest = !isHidden && !cheapestAssigned && minTaskCost.HasValue && cost.HasValue && cost.Value == minTaskCost.Value;
             if (isCheapest)
             {
                 cheapestAssigned = true;

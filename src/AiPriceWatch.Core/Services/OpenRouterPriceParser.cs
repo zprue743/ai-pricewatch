@@ -93,17 +93,21 @@ public static class OpenRouterPriceParser
                 liveLookup.TryGetValue(NormalizeKey(entry.Id), out live))
             {
                 updatedCount++;
-                decimal ratio = entry.InputPerMillion > 0m && entry.FastInputPerMillion.HasValue
-                    ? entry.FastInputPerMillion.Value / entry.InputPerMillion
-                    : 2.0m;
+                var openRouterProvenance = new FieldProvenance(
+                    SourceName: "OpenRouter API",
+                    SourceUrl: "https://openrouter.ai/api/v1/models",
+                    SourceType: PriceSourceType.OpenRouter,
+                    LastVerifiedAt: DateTimeOffset.UtcNow,
+                    Status: DataVerificationStatus.Verified);
 
+                // PW-02: Never derive or overwrite Fast/Priority pricing from OpenRouter standard rates.
                 updated.Add(entry with
                 {
                     InputPerMillion = live.InputPerM,
                     OutputPerMillion = live.OutputPerM,
                     CachedInputPerMillion = live.CachedPerM ?? entry.CachedInputPerMillion,
-                    FastInputPerMillion = Math.Round(live.InputPerM * ratio, 4),
-                    FastOutputPerMillion = Math.Round(live.OutputPerM * ratio, 4)
+                    PricingSource = openRouterProvenance,
+                    CachedPricingSource = live.CachedPerM.HasValue ? openRouterProvenance : entry.CachedPricingSource
                 });
             }
             else

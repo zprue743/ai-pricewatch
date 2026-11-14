@@ -36,13 +36,11 @@ public sealed class ModelRowViewModel
         OutputPriceDisplay = TaskCostCalculator.FormatPricePerMillion(entry.OutputPerMillion);
         StandardInOutDisplay = TaskCostCalculator.FormatInOutPair(entry.InputPerMillion, entry.OutputPerMillion);
 
-        decimal fastIn = entry.FastInputPerMillion ?? entry.InputPerMillion;
-        decimal fastOut = entry.FastOutputPerMillion ?? entry.OutputPerMillion;
-        FastInOutDisplay = TaskCostCalculator.FormatInOutPair(fastIn, fastOut);
+        FastInOutDisplay = TaskCostCalculator.FormatInOutPair(entry.FastInputPerMillion, entry.FastOutputPerMillion);
 
         ContextDisplay = TaskCostCalculator.FormatContextWindow(entry.ContextTokens);
 
-        EstimatedTaskCostRaw = TaskCostCalculator.CalculateCost(
+        EstimatedTaskCostRaw = TaskCostCalculator.CalculateCostOrNull(
             entry,
             taskInputTokens,
             taskCachedTokens,
@@ -91,7 +89,7 @@ public sealed class ModelRowViewModel
     public string StandardInOutDisplay { get; }
     public string FastInOutDisplay { get; }
     public string ContextDisplay { get; }
-    public decimal EstimatedTaskCostRaw { get; }
+    public decimal? EstimatedTaskCostRaw { get; }
     public string EstimatedTaskCostDisplay { get; }
     public string Notes { get; }
     public FieldProvenance StandardProvenance { get; }
