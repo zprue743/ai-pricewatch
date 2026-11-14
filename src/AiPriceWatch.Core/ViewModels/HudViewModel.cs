@@ -19,6 +19,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
     private int _taskInputTokens;
     private int _taskCachedTokens;
     private int _taskOutputTokens;
+    private bool _isFastMode;
     private double _backgroundOpacity = 0.86;
     private bool _isAlwaysOnTop = true;
     private string _statusText = "Curated catalog ready";
@@ -178,6 +179,20 @@ public sealed class HudViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool IsFastMode
+    {
+        get => _isFastMode;
+        set
+        {
+            if (_isFastMode != value)
+            {
+                _isFastMode = value;
+                OnPropertyChanged();
+                RefreshVisibleModels();
+            }
+        }
+    }
+
     public double BackgroundOpacity
     {
         get => _backgroundOpacity;
@@ -261,7 +276,8 @@ public sealed class HudViewModel : INotifyPropertyChanged
             sort: _selectedSort,
             taskInputTokens: _taskInputTokens,
             taskCachedTokens: _taskCachedTokens,
-            taskOutputTokens: _taskOutputTokens);
+            taskOutputTokens: _taskOutputTokens,
+            useFastMode: _isFastMode);
 
         if (entries.Count == 0)
         {
@@ -271,13 +287,13 @@ public sealed class HudViewModel : INotifyPropertyChanged
         }
 
         decimal minTaskCost = entries.Min(e =>
-            TaskCostCalculator.CalculateCost(e, _taskInputTokens, _taskCachedTokens, _taskOutputTokens));
+            TaskCostCalculator.CalculateCost(e, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode));
 
         bool cheapestAssigned = false;
         var rows = new List<ModelRowViewModel>(entries.Count);
         foreach (ModelPricingEntry entry in entries)
         {
-            decimal cost = TaskCostCalculator.CalculateCost(entry, _taskInputTokens, _taskCachedTokens, _taskOutputTokens);
+            decimal cost = TaskCostCalculator.CalculateCost(entry, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode);
             bool isCheapest = !cheapestAssigned && cost == minTaskCost;
             if (isCheapest)
             {
@@ -289,11 +305,13 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 _taskInputTokens,
                 _taskCachedTokens,
                 _taskOutputTokens,
-                isCheapest));
+                isCheapest,
+                _isFastMode));
         }
 
         VisibleModels = rows;
-        StatusText = $"{rows.Count} models • {_selectedProvider} • $/1M tokens";
+        string modeLabel = _isFastMode ? "FAST MODE" : "STD MODE";
+        StatusText = $"{rows.Count} models • {_selectedProvider} • {modeLabel}";
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="AI PriceWatch HUD"
-        Width="760"
-        Height="480"
-        MinWidth="560"
-        MinHeight="340"
+        Width="860"
+        Height="510"
+        MinWidth="660"
+        MinHeight="360"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -80,7 +80,7 @@
                                    VerticalAlignment="Center"
                                    Margin="0,0,6,0" />
                         <Slider x:Name="OpacitySlider"
-                                Width="74"
+                                Width="70"
                                 Minimum="0.35"
                                 Maximum="1.0"
                                 Value="{Binding BackgroundOpacity, Mode=TwoWay}"
@@ -93,6 +93,19 @@
                                    Width="32"
                                    Margin="5,0,8,0"
                                    VerticalAlignment="Center" />
+
+                        <Button x:Name="FastModeButton"
+                                Content="⚡ FAST: OFF"
+                                Click="FastModeButton_Click"
+                                Padding="7,2"
+                                Margin="0,0,6,0"
+                                FontSize="10"
+                                FontWeight="SemiBold"
+                                Foreground="#8B949E"
+                                Background="#1F242C"
+                                BorderBrush="#30363D"
+                                Cursor="Hand"
+                                ToolTip="Toggle Fast / Priority Mode pricing for task cost estimates (Ctrl+M)" />
 
                         <Button x:Name="PinButton"
                                 Content="PIN: ON"
@@ -183,7 +196,7 @@
                                      FontSize="11.5"
                                      VerticalContentAlignment="Center"
                                      ToolTip="Filter models by name, ID, provider, or use case (Ctrl+F)" />
-                            <TextBlock Text="Search models or task (e.g. coding, fast, 1M, haiku)... [Ctrl+F]"
+                            <TextBlock Text="Search models (e.g. composer, grok 4.6, argon, sonnet)... [Ctrl+F]"
                                        Foreground="#6E7681"
                                        FontSize="11"
                                        Margin="9,0,0,0"
@@ -218,12 +231,13 @@
 
                         <ComboBox x:Name="SortComboBox"
                                   Grid.Column="2"
-                                  Width="172"
+                                  Width="176"
                                   FontSize="11"
                                   SelectionChanged="SortComboBox_SelectionChanged"
                                   SelectedIndex="0"
                                   ToolTip="Sort models">
                             <ComboBoxItem Content="Sort: Flagships First" Tag="Featured" />
+                            <ComboBoxItem Content="Sort: Score (AAII) ↓" Tag="ScoreDesc" />
                             <ComboBoxItem Content="Sort: Input $/1M ↑" Tag="InputPriceAsc" />
                             <ComboBoxItem Content="Sort: Output $/1M ↑" Tag="OutputPriceAsc" />
                             <ComboBoxItem Content="Sort: Est. Task Cost ↑" Tag="TotalTaskCostAsc" />
@@ -242,21 +256,39 @@
                     Padding="12,0,18,0">
                 <Grid VerticalAlignment="Center">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2.1*" />
-                        <ColumnDefinition Width="1.15*" />
-                        <ColumnDefinition Width="0.85*" />
-                        <ColumnDefinition Width="0.85*" />
-                        <ColumnDefinition Width="0.85*" />
-                        <ColumnDefinition Width="0.65*" />
-                        <ColumnDefinition Width="1.05*" />
+                        <ColumnDefinition Width="2.15*" />
+                        <ColumnDefinition Width="0.72*" />
+                        <ColumnDefinition Width="1.25*" />
+                        <ColumnDefinition Width="1.25*" />
+                        <ColumnDefinition Width="0.72*" />
+                        <ColumnDefinition Width="0.55*" />
+                        <ColumnDefinition Width="0.95*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="MODEL / PROVIDER" Foreground="#8B949E" FontSize="10" FontWeight="Bold" />
-                    <TextBlock Grid.Column="1" Text="TASK TIER" Foreground="#8B949E" FontSize="10" FontWeight="Bold" />
-                    <TextBlock Grid.Column="2" Text="INPUT /1M" Foreground="#8B949E" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
-                    <TextBlock Grid.Column="3" Text="CACHE /1M" Foreground="#8B949E" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
-                    <TextBlock Grid.Column="4" Text="OUTPUT /1M" Foreground="#8B949E" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
+                    <TextBlock Grid.Column="0" Text="MODEL / PROVIDER • TIER" Foreground="#8B949E" FontSize="10" FontWeight="Bold" />
+                    <TextBlock Grid.Column="1"
+                               Text="AAII SCORE"
+                               Foreground="#D2A8FF"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               TextAlignment="Center"
+                               ToolTip="Artificial Analysis Intelligence Index v5 composite benchmark score" />
+                    <TextBlock Grid.Column="2"
+                               Text="STD (IN / OUT)"
+                               Foreground="#E6EDF3"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               TextAlignment="Right"
+                               ToolTip="Standard Mode: Input $ / Output $ per 1M tokens" />
+                    <TextBlock Grid.Column="3"
+                               Text="⚡ FAST (IN / OUT)"
+                               Foreground="#FFA657"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               TextAlignment="Right"
+                               ToolTip="Fast / Priority Mode: Input $ / Output $ per 1M tokens" />
+                    <TextBlock Grid.Column="4" Text="CACHE /1M" Foreground="#79C0FF" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
                     <TextBlock Grid.Column="5" Text="CTX" Foreground="#8B949E" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
-                    <TextBlock Grid.Column="6" Text="EST. TASK" Foreground="#58A6FF" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
+                    <TextBlock Grid.Column="6" Text="EST. TASK" Foreground="#3FB950" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
                 </Grid>
             </Border>
 
@@ -277,16 +309,16 @@
                                     ToolTip="{Binding Notes}">
                                 <Grid VerticalAlignment="Center">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2.1*" />
-                                        <ColumnDefinition Width="1.15*" />
-                                        <ColumnDefinition Width="0.85*" />
-                                        <ColumnDefinition Width="0.85*" />
-                                        <ColumnDefinition Width="0.85*" />
-                                        <ColumnDefinition Width="0.65*" />
-                                        <ColumnDefinition Width="1.05*" />
+                                        <ColumnDefinition Width="2.15*" />
+                                        <ColumnDefinition Width="0.72*" />
+                                        <ColumnDefinition Width="1.25*" />
+                                        <ColumnDefinition Width="1.25*" />
+                                        <ColumnDefinition Width="0.72*" />
+                                        <ColumnDefinition Width="0.55*" />
+                                        <ColumnDefinition Width="0.95*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- Model Name & Provider -->
+                                    <!-- Model Name, Provider & Tier -->
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Name}"
@@ -307,47 +339,57 @@
                                                            FontWeight="Bold" />
                                             </Border>
                                         </StackPanel>
-                                        <TextBlock Text="{Binding Provider}"
-                                                   Foreground="#7D8590"
-                                                   FontSize="10" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
+                                            <TextBlock Text="{Binding Provider}"
+                                                       Foreground="#7D8590"
+                                                       FontSize="10" />
+                                            <TextBlock Text=" • "
+                                                       Foreground="#484F58"
+                                                       FontSize="10" />
+                                            <TextBlock Text="{Binding TierBadge}"
+                                                       Foreground="#8B949E"
+                                                       FontSize="9.5"
+                                                       FontWeight="SemiBold" />
+                                        </StackPanel>
                                     </StackPanel>
 
-                                    <!-- Tier Badge -->
+                                    <!-- Published Credible Score (Artificial Analysis Intelligence Index) -->
                                     <Border Grid.Column="1"
-                                            HorizontalAlignment="Left"
+                                            HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
                                             CornerRadius="4"
                                             Padding="6,2"
-                                            Background="#2230363D"
-                                            BorderBrush="#448B949E"
-                                            BorderThickness="1">
-                                        <TextBlock Text="{Binding TierBadge}"
-                                                   Foreground="#C9D1D9"
-                                                   FontSize="9.5"
-                                                   FontWeight="SemiBold" />
+                                            Background="#1FD2A8FF"
+                                            BorderBrush="#55D2A8FF"
+                                            BorderThickness="1"
+                                            ToolTip="Artificial Analysis Intelligence Index v5 Score">
+                                        <TextBlock Text="{Binding ScoreDisplay}"
+                                                   Foreground="#D2A8FF"
+                                                   FontSize="11"
+                                                   FontWeight="Bold" />
                                     </Border>
 
-                                    <!-- Input $/1M -->
+                                    <!-- Standard Mode Input / Output $/1M -->
                                     <TextBlock Grid.Column="2"
-                                               Text="{Binding InputPriceDisplay}"
+                                               Text="{Binding StandardInOutDisplay}"
                                                Foreground="#E6EDF3"
-                                               FontSize="12"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Right" />
-
-                                    <!-- Cached Input $/1M -->
-                                    <TextBlock Grid.Column="3"
-                                               Text="{Binding CachedPriceDisplay}"
-                                               Foreground="#79C0FF"
                                                FontSize="11.5"
                                                VerticalAlignment="Center"
                                                TextAlignment="Right" />
 
-                                    <!-- Output $/1M -->
-                                    <TextBlock Grid.Column="4"
-                                               Text="{Binding OutputPriceDisplay}"
+                                    <!-- Fast / Priority Mode Input / Output $/1M -->
+                                    <TextBlock Grid.Column="3"
+                                               Text="{Binding FastInOutDisplay}"
                                                Foreground="#FFA657"
-                                               FontSize="12"
+                                               FontSize="11.5"
+                                               VerticalAlignment="Center"
+                                               TextAlignment="Right" />
+
+                                    <!-- Cached Input $/1M -->
+                                    <TextBlock Grid.Column="4"
+                                               Text="{Binding CachedPriceDisplay}"
+                                               Foreground="#79C0FF"
+                                               FontSize="11.5"
                                                VerticalAlignment="Center"
                                                TextAlignment="Right" />
 

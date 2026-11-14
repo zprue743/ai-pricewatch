@@ -72,7 +72,8 @@ public sealed class PricingCatalogService
         PricingSortField sort = PricingSortField.Featured,
         int taskInputTokens = 10_000,
         int taskCachedTokens = 0,
-        int taskOutputTokens = 2_000)
+        int taskOutputTokens = 2_000,
+        bool useFastMode = false)
     {
         IEnumerable<ModelPricingEntry> query = _models;
 
@@ -101,15 +102,18 @@ public sealed class PricingCatalogService
         query = sort switch
         {
             PricingSortField.Featured => query,
+            PricingSortField.ScoreDesc => query
+                .OrderByDescending(m => m.IntelligenceScore ?? 0m)
+                .ThenBy(m => m.InputPerMillion),
             PricingSortField.InputPriceAsc => query
-                .OrderBy(m => m.InputPerMillion)
-                .ThenBy(m => m.OutputPerMillion),
+                .OrderBy(m => useFastMode ? (m.FastInputPerMillion ?? m.InputPerMillion) : m.InputPerMillion)
+                .ThenBy(m => useFastMode ? (m.FastOutputPerMillion ?? m.OutputPerMillion) : m.OutputPerMillion),
             PricingSortField.OutputPriceAsc => query
-                .OrderBy(m => m.OutputPerMillion)
-                .ThenBy(m => m.InputPerMillion),
+                .OrderBy(m => useFastMode ? (m.FastOutputPerMillion ?? m.OutputPerMillion) : m.OutputPerMillion)
+                .ThenBy(m => useFastMode ? (m.FastInputPerMillion ?? m.InputPerMillion) : m.InputPerMillion),
             PricingSortField.TotalTaskCostAsc => query
-                .OrderBy(m => TaskCostCalculator.CalculateCost(m, taskInputTokens, taskCachedTokens, taskOutputTokens))
-                .ThenBy(m => m.InputPerMillion),
+                .OrderBy(m => TaskCostCalculator.CalculateCost(m, taskInputTokens, taskCachedTokens, taskOutputTokens, useFastMode))
+                .ThenByDescending(m => m.IntelligenceScore ?? 0m),
             PricingSortField.ContextDesc => query
                 .OrderByDescending(m => m.ContextTokens)
                 .ThenBy(m => m.InputPerMillion),

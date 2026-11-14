@@ -9,4 +9,7 @@ public sealed record ModelPricingEntry(
     decimal? CachedInputPerMillion,
     decimal OutputPerMillion,
     int ContextTokens,
-    string Notes);
+    string Notes,
+    decimal? FastInputPerMillion = null,
+    decimal? FastOutputPerMillion = null,
+    decimal? IntelligenceScore = null);

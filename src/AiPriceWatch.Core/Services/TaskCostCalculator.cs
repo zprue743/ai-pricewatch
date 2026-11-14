@@ -11,7 +11,8 @@ public static class TaskCostCalculator
         ModelPricingEntry model,
         int inputTokens,
         int cachedInputTokens,
-        int outputTokens)
+        int outputTokens,
+        bool useFastMode = false)
     {
         ArgumentNullException.ThrowIfNull(model);
 
@@ -19,11 +20,19 @@ public static class TaskCostCalculator
         long clampedCached = Math.Max(0, cachedInputTokens);
         long clampedOutput = Math.Max(0, outputTokens);
 
-        decimal effectiveCachedRate = model.CachedInputPerMillion ?? model.InputPerMillion;
+        decimal activeInputRate = useFastMode
+            ? (model.FastInputPerMillion ?? model.InputPerMillion)
+            : model.InputPerMillion;
 
-        decimal inputCost = (clampedInput / OneMillion) * model.InputPerMillion;
+        decimal activeOutputRate = useFastMode
+            ? (model.FastOutputPerMillion ?? model.OutputPerMillion)
+            : model.OutputPerMillion;
+
+        decimal effectiveCachedRate = model.CachedInputPerMillion ?? activeInputRate;
+
+        decimal inputCost = (clampedInput / OneMillion) * activeInputRate;
         decimal cachedCost = (clampedCached / OneMillion) * effectiveCachedRate;
-        decimal outputCost = (clampedOutput / OneMillion) * model.OutputPerMillion;
+        decimal outputCost = (clampedOutput / OneMillion) * activeOutputRate;
 
         return Math.Max(0m, inputCost + cachedCost + outputCost);
     }
@@ -62,6 +71,26 @@ public static class TaskCostCalculator
         }
 
         return string.Create(CultureInfo.InvariantCulture, $"${value:0.00##}");
+    }
+
+    public static string FormatInOutPair(decimal? inputPerMillion, decimal? outputPerMillion)
+    {
+        if (inputPerMillion is null || outputPerMillion is null)
+        {
+            return "—";
+        }
+
+        return $"{FormatPricePerMillion(inputPerMillion)} / {FormatPricePerMillion(outputPerMillion)}";
+    }
+
+    public static string FormatScore(decimal? score)
+    {
+        if (score is null || score.Value <= 0m)
+        {
+            return "—";
+        }
+
+        return string.Create(CultureInfo.InvariantCulture, $"{score.Value:F1}");
     }
 
     public static string FormatContextWindow(int contextTokens)

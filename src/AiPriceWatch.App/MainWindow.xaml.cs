@@ -69,7 +69,7 @@ public partial class MainWindow : Window
 
             var button = new Button
             {
-                Content = i < 6 ? $"[{i + 1}] {provider}" : provider,
+                Content = i < 7 ? $"[{i + 1}] {provider}" : provider,
                 Tag = provider,
                 Margin = new Thickness(0, 0, 6, 4),
                 Padding = new Thickness(9, 4, 9, 4),
@@ -129,6 +129,23 @@ public partial class MainWindow : Window
         double clamped = Math.Clamp(opacity, 0.35, 1.0);
         byte alpha = (byte)Math.Round(clamped * 255);
         HudBackgroundBrush.Color = Color.FromArgb(alpha, 0x0D, 0x11, 0x17);
+    }
+
+    private void FastModeButton_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleFastMode();
+    }
+
+    private void ToggleFastMode()
+    {
+        _viewModel.IsFastMode = !_viewModel.IsFastMode;
+        FastModeButton.Content = _viewModel.IsFastMode ? "⚡ FAST: ON" : "⚡ FAST: OFF";
+        FastModeButton.Foreground = new SolidColorBrush(_viewModel.IsFastMode
+            ? Color.FromRgb(0xFF, 0xA6, 0x57)
+            : Color.FromRgb(0x8B, 0x94, 0x9E));
+        FastModeButton.BorderBrush = new SolidColorBrush(_viewModel.IsFastMode
+            ? Color.FromRgb(0xFF, 0xA6, 0x57)
+            : Color.FromRgb(0x30, 0x36, 0x3D));
     }
 
     private void PinButton_Click(object sender, RoutedEventArgs e)
@@ -202,6 +219,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.M)
+        {
+            ToggleFastMode();
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers == ModifierKeys.Alt)
         {
             Key actualKey = e.Key == Key.System ? e.SystemKey : e.Key;
@@ -213,6 +237,7 @@ public partial class MainWindow : Window
                 Key.D4 => 3,
                 Key.D5 => 4,
                 Key.D6 => 5,
+                Key.D7 => 6,
                 _ => -1
             };
 
