@@ -1,0 +1,211 @@
+[
+  {
+    "id": "gpt-4.1",
+    "name": "GPT-4.1",
+    "provider": "OpenAI",
+    "tier": "Balanced",
+    "inputPerMillion": 2.00,
+    "cachedInputPerMillion": 0.50,
+    "outputPerMillion": 8.00,
+    "contextTokens": 1000000,
+    "notes": "Flagship coding & instruction following (1M ctx)"
+  },
+  {
+    "id": "gpt-4.1-mini",
+    "name": "GPT-4.1 mini",
+    "provider": "OpenAI",
+    "tier": "Fast",
+    "inputPerMillion": 0.40,
+    "cachedInputPerMillion": 0.10,
+    "outputPerMillion": 1.60,
+    "contextTokens": 1000000,
+    "notes": "Fast daily-driver coding & tool use"
+  },
+  {
+    "id": "gpt-4.1-nano",
+    "name": "GPT-4.1 nano",
+    "provider": "OpenAI",
+    "tier": "Fast",
+    "inputPerMillion": 0.10,
+    "cachedInputPerMillion": 0.025,
+    "outputPerMillion": 0.40,
+    "contextTokens": 1000000,
+    "notes": "Ultra-low-cost classification, extraction & routing"
+  },
+  {
+    "id": "gpt-4o",
+    "name": "GPT-4o",
+    "provider": "OpenAI",
+    "tier": "Balanced",
+    "inputPerMillion": 2.50,
+    "cachedInputPerMillion": 1.25,
+    "outputPerMillion": 10.00,
+    "contextTokens": 128000,
+    "notes": "Multimodal omni model"
+  },
+  {
+    "id": "gpt-4o-mini",
+    "name": "GPT-4o mini",
+    "provider": "OpenAI",
+    "tier": "Fast",
+    "inputPerMillion": 0.15,
+    "cachedInputPerMillion": 0.075,
+    "outputPerMillion": 0.60,
+    "contextTokens": 128000,
+    "notes": "Lightweight multimodal & high-volume tasks"
+  },
+  {
+    "id": "o3",
+    "name": "OpenAI o3",
+    "provider": "OpenAI",
+    "tier": "Reasoning",
+    "inputPerMillion": 2.00,
+    "cachedInputPerMillion": 0.50,
+    "outputPerMillion": 8.00,
+    "contextTokens": 200000,
+    "notes": "Deep reasoning for complex math, architecture & debugging"
+  },
+  {
+    "id": "o4-mini",
+    "name": "OpenAI o4-mini",
+    "provider": "OpenAI",
+    "tier": "Reasoning",
+    "inputPerMillion": 1.10,
+    "cachedInputPerMillion": 0.275,
+    "outputPerMillion": 4.40,
+    "contextTokens": 200000,
+    "notes": "Cost-efficient fast reasoning & coding"
+  },
+  {
+    "id": "claude-opus-4",
+    "name": "Claude Opus 4",
+    "provider": "Anthropic",
+    "tier": "Reasoning",
+    "inputPerMillion": 15.00,
+    "cachedInputPerMillion": 1.50,
+    "outputPerMillion": 75.00,
+    "contextTokens": 200000,
+    "notes": "Frontier autonomous coding & deep research"
+  },
+  {
+    "id": "claude-sonnet-4",
+    "name": "Claude Sonnet 4",
+    "provider": "Anthropic",
+    "tier": "Balanced",
+    "inputPerMillion": 3.00,
+    "cachedInputPerMillion": 0.30,
+    "outputPerMillion": 15.00,
+    "contextTokens": 200000,
+    "notes": "Workhorse software engineering & agent workflows"
+  },
+  {
+    "id": "claude-3.7-sonnet",
+    "name": "Claude 3.7 Sonnet",
+    "provider": "Anthropic",
+    "tier": "Balanced",
+    "inputPerMillion": 3.00,
+    "cachedInputPerMillion": 0.30,
+    "outputPerMillion": 15.00,
+    "contextTokens": 200000,
+    "notes": "Hybrid extended thinking & code generation"
+  },
+  {
+    "id": "claude-3.5-haiku",
+    "name": "Claude 3.5 Haiku",
+    "provider": "Anthropic",
+    "tier": "Fast",
+    "inputPerMillion": 0.80,
+    "cachedInputPerMillion": 0.08,
+    "outputPerMillion": 4.00,
+    "contextTokens": 200000,
+    "notes": "Fast sub-agent tasks, summaries & quick edits"
+  },
+  {
+    "id": "gemini-2.5-pro",
+    "name": "Gemini 2.5 Pro",
+    "provider": "Google Gemini",
+    "tier": "Reasoning",
+    "inputPerMillion": 1.25,
+    "cachedInputPerMillion": 0.31,
+    "outputPerMillion": 10.00,
+    "contextTokens": 1000000,
+    "notes": "1M context reasoning & whole-repo analysis"
+  },
+  {
+    "id": "gemini-2.5-flash",
+    "name": "Gemini 2.5 Flash",
+    "provider": "Google Gemini",
+    "tier": "Balanced",
+    "inputPerMillion": 0.30,
+    "cachedInputPerMillion": 0.075,
+    "outputPerMillion": 2.50,
+    "contextTokens": 1000000,
+    "notes": "High price-performance hybrid reasoning (1M ctx)"
+  },
+  {
+    "id": "gemini-2.5-flash-lite",
+    "name": "Gemini 2.5 Flash-Lite",
+    "provider": "Google Gemini",
+    "tier": "Fast",
+    "inputPerMillion": 0.10,
+    "cachedInputPerMillion": 0.025,
+    "outputPerMillion": 0.40,
+    "contextTokens": 1000000,
+    "notes": "Lowest latency & cost at massive scale"
+  },
+  {
+    "id": "gemini-2.0-flash",
+    "name": "Gemini 2.0 Flash",
+    "provider": "Google Gemini",
+    "tier": "Fast",
+    "inputPerMillion": 0.10,
+    "cachedInputPerMillion": 0.025,
+    "outputPerMillion": 0.40,
+    "contextTokens": 1000000,
+    "notes": "Fast multimodal agentic workhorse"
+  },
+  {
+    "id": "grok-3",
+    "name": "Grok 3",
+    "provider": "xAI",
+    "tier": "Balanced",
+    "inputPerMillion": 3.00,
+    "cachedInputPerMillion": 0.75,
+    "outputPerMillion": 15.00,
+    "contextTokens": 131072,
+    "notes": "Flagship xAI model for synthesis & coding"
+  },
+  {
+    "id": "grok-3-mini",
+    "name": "Grok 3 Mini",
+    "provider": "xAI",
+    "tier": "Fast",
+    "inputPerMillion": 0.30,
+    "cachedInputPerMillion": 0.075,
+    "outputPerMillion": 0.50,
+    "contextTokens": 131072,
+    "notes": "Lightweight fast reasoning & STEM tasks"
+  },
+  {
+    "id": "deepseek-chat",
+    "name": "DeepSeek V3",
+    "provider": "DeepSeek",
+    "tier": "Balanced",
+    "inputPerMillion": 0.27,
+    "cachedInputPerMillion": 0.07,
+    "outputPerMillion": 1.10,
+    "contextTokens": 128000,
+    "notes": "High-value MoE general & coding model"
+  },
+  {
+    "id": "deepseek-reasoner",
+    "name": "DeepSeek R1",
+    "provider": "DeepSeek",
+    "tier": "Reasoning",
+    "inputPerMillion": 0.55,
+    "cachedInputPerMillion": 0.14,
+    "outputPerMillion": 2.19,
+    "contextTokens": 128000,
+    "notes": "Open-weights chain-of-thought reasoning"
+  }
+]
