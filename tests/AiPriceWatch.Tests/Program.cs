@@ -380,6 +380,54 @@ var tieCatalog = new PricingCatalogService([tieA, tieB]);
 var tieRanked = tieCatalog.Query(sort: PricingSortField.TotalTaskCostAsc);
 AssertEqual("tie-b", tieRanked[0].Id, "Cost tie-breaker deterministically prefers higher IntelligenceScore");
 
+// PW-11: UserPreferencesStore v0.1->v0.2 migration, persistence, and corrupt fallback
+string v1PrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-pw11-v1-{Guid.NewGuid():N}.json");
+string corruptPrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-pw11-corrupt-{Guid.NewGuid():N}.json");
+try
+{
+    File.WriteAllText(v1PrefsPath, """{ "HiddenModelIds": ["gpt-5-mini", "composer-2"] }""");
+    var v1Store = new UserPreferencesStore(v1PrefsPath);
+    var v1Vm = new HudViewModel(PricingCatalogService.LoadDefault(), v1Store);
+    AssertEqual(2, v1Vm.HiddenCount, "v0.1 preferences preserve HiddenModelIds");
+    AssertEqual(0.86, v1Vm.BackgroundOpacity, "v0.1 migration applies default opacity");
+    AssertEqual(false, v1Vm.StartWithWindows, "StartWithWindows defaults to false");
+
+    // Mutate settings and verify persistence across restart
+    v1Vm.SelectedProvider = "Anthropic";
+    v1Vm.SelectedTier = TaskTier.Balanced;
+    v1Vm.SelectedSort = PricingSortField.TotalTaskCostAsc;
+    v1Vm.IsFastMode = true;
+    v1Vm.BackgroundOpacity = 0.72;
+    v1Vm.IsAlwaysOnTop = false;
+    v1Vm.TaskInputTokens = 12_345;
+    v1Vm.HasDismissedOnboarding = true;
+    v1Vm.HasShownTrayMinimizeNotice = true;
+    v1Vm.StartWithWindows = true;
+
+    var v2Vm = new HudViewModel(PricingCatalogService.LoadDefault(), v1Store);
+    AssertEqual(2, v2Vm.HiddenCount, "Reloaded v2 preserves HiddenModelIds");
+    AssertEqual("Anthropic", v2Vm.SelectedProvider, "Persists SelectedProvider");
+    AssertEqual((TaskTier?)TaskTier.Balanced, v2Vm.SelectedTier, "Persists SelectedTier");
+    AssertEqual(PricingSortField.TotalTaskCostAsc, v2Vm.SelectedSort, "Persists SelectedSort");
+    AssertEqual(true, v2Vm.IsFastMode, "Persists IsFastMode");
+    AssertEqual(0.72, v2Vm.BackgroundOpacity, "Persists BackgroundOpacity");
+    AssertEqual(false, v2Vm.IsAlwaysOnTop, "Persists IsAlwaysOnTop");
+    AssertEqual(12_345, v2Vm.TaskInputTokens, "Persists TaskInputTokens");
+    AssertEqual(true, v2Vm.HasDismissedOnboarding, "Persists HasDismissedOnboarding");
+    AssertEqual(true, v2Vm.HasShownTrayMinimizeNotice, "Persists HasShownTrayMinimizeNotice");
+    AssertEqual(true, v2Vm.StartWithWindows, "Persists StartWithWindows");
+
+    File.WriteAllText(corruptPrefsPath, "{ broken json !!!");
+    var corruptStore = new UserPreferencesStore(corruptPrefsPath);
+    var corruptPrefs = corruptStore.Load();
+    AssertEqual(0.86, corruptPrefs.BackgroundOpacity, "Corrupt preferences file falls back to safe defaults");
+}
+finally
+{
+    if (File.Exists(v1PrefsPath)) File.Delete(v1PrefsPath);
+    if (File.Exists(corruptPrefsPath)) File.Delete(corruptPrefsPath);
+}
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler

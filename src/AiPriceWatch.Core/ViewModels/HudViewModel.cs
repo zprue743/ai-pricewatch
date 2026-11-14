@@ -49,6 +49,9 @@ public sealed class HudViewModel : INotifyPropertyChanged
     private string? _lastSyncError;
     private int _lastSyncMatchedCount;
     private int _lastSyncIgnoredCount;
+    private bool _hasDismissedOnboarding;
+    private bool _hasShownTrayMinimizeNotice;
+    private bool _startWithWindows;
     private IReadOnlyList<ModelRowViewModel> _visibleModels = Array.Empty<ModelRowViewModel>();
 
     public HudViewModel(PricingCatalogService catalog, UserPreferencesStore? preferencesStore = null)
@@ -56,7 +59,8 @@ public sealed class HudViewModel : INotifyPropertyChanged
         ArgumentNullException.ThrowIfNull(catalog);
         _catalog = catalog;
         _preferencesStore = preferencesStore ?? new UserPreferencesStore();
-        _hiddenModelIds = _preferencesStore.LoadHiddenModels();
+        UserPreferences prefs = _preferencesStore.Load();
+        _hiddenModelIds = new HashSet<string>(prefs.HiddenModelIds, StringComparer.OrdinalIgnoreCase);
 
         var providerList = new List<string> { "All" };
         providerList.AddRange(_catalog.GetProviders());
@@ -70,10 +74,25 @@ public sealed class HudViewModel : INotifyPropertyChanged
             new TaskPreset("Repo Audit", 250_000, 0, 16_000, "250K in / 16K out")
         ];
 
-        _selectedPreset = Presets[1]; // Default to Code Feature (50K in / 8K out)
-        _taskInputTokens = _selectedPreset.InputTokens;
-        _taskCachedTokens = _selectedPreset.CachedInputTokens;
-        _taskOutputTokens = _selectedPreset.OutputTokens;
+        _selectedProvider = providerList.Contains(prefs.SelectedProvider, StringComparer.OrdinalIgnoreCase)
+            ? providerList.First(p => string.Equals(p, prefs.SelectedProvider, StringComparison.OrdinalIgnoreCase))
+            : "All";
+        _selectedTier = prefs.SelectedTier;
+        _selectedSort = prefs.SelectedSort;
+        _isFastMode = prefs.IsFastMode;
+        _backgroundOpacity = Math.Clamp(prefs.BackgroundOpacity, MinOpacity, MaxOpacity);
+        _isAlwaysOnTop = prefs.IsAlwaysOnTop;
+        _hasDismissedOnboarding = prefs.HasDismissedOnboarding;
+        _hasShownTrayMinimizeNotice = prefs.HasShownTrayMinimizeNotice;
+        _startWithWindows = prefs.StartWithWindows;
+
+        _selectedPreset = Presets.FirstOrDefault(p =>
+            string.Equals(p.Name, prefs.SelectedPresetName, StringComparison.OrdinalIgnoreCase))
+            ?? Presets[1]; // Default to Code Feature (50K in / 8K out)
+
+        _taskInputTokens = prefs.TaskInputTokens ?? _selectedPreset.InputTokens;
+        _taskCachedTokens = prefs.TaskCachedTokens ?? _selectedPreset.CachedInputTokens;
+        _taskOutputTokens = prefs.TaskOutputTokens ?? _selectedPreset.OutputTokens;
 
         RefreshVisibleModels();
     }
@@ -117,6 +136,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _selectedProvider = normalized;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -131,6 +151,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _selectedTier = value;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -160,6 +181,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _selectedSort = value;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -180,6 +202,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(TaskInputTokens));
                 OnPropertyChanged(nameof(TaskCachedTokens));
                 OnPropertyChanged(nameof(TaskOutputTokens));
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -195,6 +218,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _taskInputTokens = clamped;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -210,6 +234,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _taskCachedTokens = clamped;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -225,6 +250,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _taskOutputTokens = clamped;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -239,6 +265,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _isFastMode = value;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -255,6 +282,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 _backgroundOpacity = clamped;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(OpacityPercentageDisplay));
+                SavePreferences();
             }
         }
     }
@@ -270,6 +298,49 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _isAlwaysOnTop = value;
                 OnPropertyChanged();
+                SavePreferences();
+            }
+        }
+    }
+
+    public bool HasDismissedOnboarding
+    {
+        get => _hasDismissedOnboarding;
+        set
+        {
+            if (_hasDismissedOnboarding != value)
+            {
+                _hasDismissedOnboarding = value;
+                OnPropertyChanged();
+                SavePreferences();
+            }
+        }
+    }
+
+    public bool HasShownTrayMinimizeNotice
+    {
+        get => _hasShownTrayMinimizeNotice;
+        set
+        {
+            if (_hasShownTrayMinimizeNotice != value)
+            {
+                _hasShownTrayMinimizeNotice = value;
+                OnPropertyChanged();
+                SavePreferences();
+            }
+        }
+    }
+
+    public bool StartWithWindows
+    {
+        get => _startWithWindows;
+        set
+        {
+            if (_startWithWindows != value)
+            {
+                _startWithWindows = value;
+                OnPropertyChanged();
+                SavePreferences();
             }
         }
     }
@@ -500,6 +571,30 @@ public sealed class HudViewModel : INotifyPropertyChanged
         CatalogDataOrigin.LastValid => $"last valid sync ({LastSuccessfulSyncAt?.ToString("HH:mm") ?? "prior"})",
         _ => "bundled data"
     };
+
+    private void SavePreferences()
+    {
+        _preferencesStore.Save(new UserPreferences
+        {
+            SchemaVersion = 2,
+            HiddenModelIds = _hiddenModelIds
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            BackgroundOpacity = _backgroundOpacity,
+            IsAlwaysOnTop = _isAlwaysOnTop,
+            SelectedProvider = _selectedProvider,
+            SelectedTier = _selectedTier,
+            SelectedSort = _selectedSort,
+            IsFastMode = _isFastMode,
+            SelectedPresetName = _selectedPreset.Name,
+            TaskInputTokens = _taskInputTokens,
+            TaskCachedTokens = _taskCachedTokens,
+            TaskOutputTokens = _taskOutputTokens,
+            HasDismissedOnboarding = _hasDismissedOnboarding,
+            HasShownTrayMinimizeNotice = _hasShownTrayMinimizeNotice,
+            StartWithWindows = _startWithWindows
+        });
+    }
 
     private void NotifyHiddenChanged()
     {
