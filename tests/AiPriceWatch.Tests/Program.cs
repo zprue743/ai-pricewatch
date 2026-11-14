@@ -119,6 +119,8 @@ try
     var vm = new HudViewModel(PricingCatalogService.LoadDefault(), prefsStore);
     int initialTotal = vm.VisibleModels.Count;
     AssertEqual("All", vm.SelectedProvider, "Default provider is All");
+    AssertEqual(PricingSortField.ScoreDesc, vm.SelectedSort, "Default sort is ScoreDesc (AAII Score)");
+    AssertTrue((vm.VisibleModels.First().ScoreRaw ?? 0m) >= (vm.VisibleModels.Last().ScoreRaw ?? 0m), "Default view is sorted by AAII Score descending");
     AssertEqual(false, vm.IsFastMode, "Default IsFastMode is false");
     AssertEqual(0, vm.HiddenCount, "Initially 0 hidden models");
     AssertTrue(initialTotal >= 24, "Shows all models initially");

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AI PriceWatch
+Comment=Transparent desktop HUD overlay for comparing AI model pricing and benchmark scores
+Exec=AiPriceWatch.App
+Icon=ai-pricewatch
+Terminal=false
+Categories=Development;Utility;
+StartupWMClass=AiPriceWatch.App

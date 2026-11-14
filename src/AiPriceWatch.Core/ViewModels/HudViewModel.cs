@@ -17,7 +17,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
     private string _selectedProvider = "All";
     private TaskTier? _selectedTier;
     private string _searchText = string.Empty;
-    private PricingSortField _selectedSort = PricingSortField.Featured;
+    private PricingSortField _selectedSort = PricingSortField.ScoreDesc;
     private TaskPreset _selectedPreset;
     private int _taskInputTokens;
     private int _taskCachedTokens;

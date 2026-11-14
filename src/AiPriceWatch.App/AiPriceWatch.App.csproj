@@ -5,8 +5,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\app-icon.ico" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AiPriceWatch.Core\AiPriceWatch.Core.csproj" />
   </ItemGroup>

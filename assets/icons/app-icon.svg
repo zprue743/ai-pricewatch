@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D1117" />
+      <stop offset="100%" stop-color="#161B22" />
+    </linearGradient>
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#58A6FF" />
+      <stop offset="100%" stop-color="#3FB950" />
+    </linearGradient>
+    <linearGradient id="barGrad1" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#1F6FEB" />
+      <stop offset="100%" stop-color="#58A6FF" />
+    </linearGradient>
+    <linearGradient id="barGrad2" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#238636" />
+      <stop offset="100%" stop-color="#3FB950" />
+    </linearGradient>
+    <linearGradient id="barGrad3" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#8957E5" />
+      <stop offset="100%" stop-color="#D2A8FF" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded Squircle HUD Frame -->
+  <rect x="24" y="24" width="464" height="464" rx="96" ry="96"
+        fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="18" />
+
+  <!-- HUD Top Status Dots -->
+  <circle cx="96" cy="84" r="10" fill="#3FB950" />
+  <circle cx="130" cy="84" r="10" fill="#58A6FF" />
+  <circle cx="164" cy="84" r="10" fill="#D2A8FF" />
+  <line x1="64" y1="118" x2="448" y2="118" stroke="#30363D" stroke-width="6" stroke-linecap="round" />
+
+  <!-- Benchmark & Price Bars -->
+  <rect x="88" y="276" width="56" height="140" rx="14" fill="url(#barGrad1)" />
+  <rect x="168" y="206" width="56" height="210" rx="14" fill="url(#barGrad3)" />
+  <rect x="248" y="152" width="56" height="264" rx="14" fill="url(#barGrad2)" />
+
+  <!-- Glowing Dollar / Token Badge -->
+  <circle cx="378" cy="284" r="74" fill="#121D2F" stroke="#58A6FF" stroke-width="12" />
+  <text x="378" y="316" text-anchor="middle" font-family="Consolas, Segoe UI, sans-serif"
+        font-weight="900" font-size="96" fill="#3FB950">$</text>
+</svg>

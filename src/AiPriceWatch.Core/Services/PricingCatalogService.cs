@@ -69,7 +69,7 @@ public sealed class PricingCatalogService
         string? provider = null,
         TaskTier? tier = null,
         string? searchText = null,
-        PricingSortField sort = PricingSortField.Featured,
+        PricingSortField sort = PricingSortField.ScoreDesc,
         int taskInputTokens = 10_000,
         int taskCachedTokens = 0,
         int taskOutputTokens = 2_000,
