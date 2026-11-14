@@ -1,5 +1,6 @@
 using AiPriceWatch.Core.Models;
 using AiPriceWatch.Core.Services;
+using AiPriceWatch.Core.ViewModels;
 
 int passed = 0;
 
@@ -55,19 +56,15 @@ AssertTrue(
     providers.Contains("DeepSeek"),
     "Includes all 5 core providers");
 
-// Case-insensitive & whitespace search + provider filter (Review Focus #4)
 var anthropicFast = catalog.Query(provider: " anthropic ", tier: TaskTier.Fast, searchText: "HAIKU");
 AssertTrue(anthropicFast.Count >= 1 && anthropicFast.All(m => m.Provider == "Anthropic" && m.Tier == TaskTier.Fast), "Filters by provider, tier, and case-insensitive search");
 
-// Sorting by InputPriceAsc
 var sortedByInput = catalog.Query(sort: PricingSortField.InputPriceAsc);
 AssertTrue(sortedByInput.First().InputPerMillion <= sortedByInput.Last().InputPerMillion, "Sorts ascending by input price");
 
-// Sorting by ContextDesc
 var sortedByContext = catalog.Query(sort: PricingSortField.ContextDesc);
 AssertTrue(sortedByContext.First().ContextTokens >= sortedByContext.Last().ContextTokens, "Sorts descending by context window");
 
-// OpenRouter live JSON merge & invalid price resilience (Review Focus #3)
 string sampleOpenRouterJson = """
 {
   "data": [
@@ -87,5 +84,26 @@ var updatedMini = merged.First(m => m.Id == "gpt-4o-mini");
 AssertEqual(0.12m, updatedMini.InputPerMillion, "OpenRouter per-token prompt price converted to $/1M");
 AssertEqual(0.50m, updatedMini.OutputPerMillion, "OpenRouter per-token completion price converted to $/1M");
 AssertEqual(0.06m, updatedMini.CachedInputPerMillion, "OpenRouter per-token cache read price converted to $/1M");
+
+// Task 3: HUD ViewModel & Task Presets
+var vm = new HudViewModel(PricingCatalogService.LoadDefault());
+AssertEqual("All", vm.SelectedProvider, "Default provider is All");
+AssertTrue(vm.VisibleModels.Count >= 18, "Shows all models initially");
+AssertTrue(vm.VisibleModels.Any(m => m.IsCheapestInView), "Marks cheapest model in view");
+
+// Provider switching updates VisibleModels
+vm.SelectedProvider = "Google Gemini";
+AssertTrue(vm.VisibleModels.All(m => m.Provider == "Google Gemini"), "Filtering by Google Gemini only shows Gemini models");
+
+// Selecting preset updates token counts and recomputes task cost
+var longContextPreset = vm.Presets.First(p => p.InputTokens >= 200_000);
+vm.SelectedPreset = longContextPreset;
+AssertEqual(longContextPreset.InputTokens, vm.TaskInputTokens, "Preset updates TaskInputTokens");
+
+// Opacity clamping (Review Focus #5)
+vm.BackgroundOpacity = 0.05;
+AssertEqual(0.35, vm.BackgroundOpacity, "Clamps minimum opacity to 0.35");
+vm.BackgroundOpacity = 1.5;
+AssertEqual(1.0, vm.BackgroundOpacity, "Clamps maximum opacity to 1.0");
 
 Console.WriteLine($"All tests passed ({passed} assertions).");
