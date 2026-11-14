@@ -73,7 +73,10 @@ AssertTrue(ids.Contains("grok-4.7") && ids.Contains("grok-4.6") && ids.Contains(
 AssertTrue(ids.Contains("composer-2.5") && ids.Contains("composer-2"), "Contains Cursor Composer models");
 AssertTrue(ids.Contains("deepseek-v4-pro") && ids.Contains("deepseek-flash"), "Contains current DeepSeek V4 lineup");
 AssertTrue(catalog.AllModels.All(m => m.IntelligenceScore is > 0m), "Every catalog model includes a published Intelligence Score");
-AssertTrue(catalog.AllModels.All(m => m.FastInputPerMillion is > 0m && m.FastOutputPerMillion is > 0m), "Every catalog model includes Fast mode input/output pricing");
+var catalogValidation = CatalogValidator.Validate(catalog.AllModels, new DateTimeOffset(2026, 11, 14, 12, 0, 0, TimeSpan.Zero));
+AssertTrue(catalogValidation.IsValid, $"Embedded catalog passes CatalogValidator: {string.Join("; ", catalogValidation.Errors)}");
+AssertTrue(catalog.AllModels.Any(m => m.FastInputPerMillion is > 0m && m.FastOutputPerMillion is > 0m), "Catalog includes verified Fast mode pricing");
+AssertTrue(catalog.AllModels.Any(m => m.FastInputPerMillion is null && m.FastOutputPerMillion is null), "Catalog leaves unverified Fast mode pricing as null (N/A)");
 
 var sortedByScore = catalog.Query(sort: PricingSortField.ScoreDesc);
 AssertTrue((sortedByScore.First().IntelligenceScore ?? 0m) >= (sortedByScore.Last().IntelligenceScore ?? 0m), "Sorts descending by Intelligence Score");
@@ -353,6 +356,18 @@ AssertEqual(CatalogDataOrigin.LastValid, syncVm.DataOrigin, "Failed sync after l
 AssertTrue(syncVm.CanRetrySync, "CanRetrySync is true after failure");
 AssertTrue(syncVm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase), "StatusText honestly reports sync failure");
 AssertEqual("$2.50 / $12.50", syncVm.VisibleModels[0].StandardInOutDisplay, "Failed sync retains prior live-synced prices instead of overwriting with bundled data");
+
+// PW-04: CatalogValidator detects duplicates, missing provenance, and impossible values
+var invalidCatalog = new[]
+{
+    new ModelPricingEntry("dup-id", "Model A", "OpenAI", TaskTier.Fast, -1m, null, 2m, 0, "Bad entry"),
+    new ModelPricingEntry("dup-id", "Model B", "OpenAI", TaskTier.Fast, 1m, null, 2m, 128000, "Duplicate")
+};
+var invalidValidation = CatalogValidator.Validate(invalidCatalog);
+AssertTrue(!invalidValidation.IsValid, "CatalogValidator rejects invalid and duplicate entries");
+AssertTrue(invalidValidation.Errors.Any(e => e.Contains("Duplicate model Id", StringComparison.Ordinal)), "CatalogValidator reports duplicate ID");
+AssertTrue(invalidValidation.Errors.Any(e => e.Contains("negative standard pricing", StringComparison.Ordinal)), "CatalogValidator reports negative pricing");
+AssertTrue(invalidValidation.Errors.Any(e => e.Contains("missing standard pricing provenance", StringComparison.Ordinal)), "CatalogValidator reports missing provenance");
 
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
