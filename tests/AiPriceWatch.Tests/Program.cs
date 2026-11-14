@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using AiPriceWatch.Core.Models;
 using AiPriceWatch.Core.Services;
 using AiPriceWatch.Core.ViewModels;
@@ -294,4 +296,70 @@ AssertEqual((decimal?)null, openRouterFastMerged[0].FastInputPerMillion, "OpenRo
 AssertEqual((decimal?)null, openRouterFastMerged[0].FastOutputPerMillion, "OpenRouter update does not manufacture FastOutputPerMillion");
 AssertEqual(4.00m, openRouterFastMerged[1].FastInputPerMillion, "OpenRouter update preserves existing verified FastInputPerMillion without ratio scaling");
 
+// PW-03: Harden live synchronization and failure handling
+var badJsonResult = OpenRouterPriceParser.MergeLivePricesDetailed([verifiedFastEntry], "{ not valid json");
+AssertTrue(!badJsonResult.IsValidPayload, "Bad JSON is flagged as invalid payload");
+AssertEqual(0, badJsonResult.UpdatedCount, "Bad JSON updates 0 models");
+
+string duplicateAndInvalidPayload = """
+{
+  "data": [
+    { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000300", "completion": "0.00001500" } },
+    { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000900", "completion": "0.00009000" } },
+    { "id": "vendor-a/shared-name", "pricing": { "prompt": "0.00000100", "completion": "0.00000200" } },
+    { "id": "vendor-b/shared-name", "pricing": { "prompt": "0.00000500", "completion": "0.00000600" } },
+    { "id": "openai/bad-price", "pricing": { "prompt": "-0.001", "completion": "0.001" } },
+    { "id": "openai/huge-price", "pricing": { "prompt": "999.0", "completion": "1.0" } }
+  ]
+}
+""";
+var sharedNameEntry = new ModelPricingEntry(
+    "shared-name", "Shared Name", "Other", TaskTier.Fast,
+    InputPerMillion: 0.99m, CachedInputPerMillion: null, OutputPerMillion: 0.99m,
+    ContextTokens: 128000, Notes: "Ambiguous short ID");
+var dupResult = OpenRouterPriceParser.MergeLivePricesDetailed([verifiedFastEntry, sharedNameEntry], duplicateAndInvalidPayload);
+AssertTrue(dupResult.IsValidPayload, "Partial valid payload succeeds");
+AssertEqual(1, dupResult.UpdatedCount, "Only unambiguous valid entry is updated");
+AssertEqual(1, dupResult.DuplicateCount, "Duplicate ID is counted and ignored");
+AssertEqual(3, dupResult.IgnoredCount, "Duplicate + negative + absurdly large entries are counted as ignored");
+AssertEqual(3.00m, dupResult.Models[0].InputPerMillion, "First valid entry wins over duplicate");
+AssertEqual(0.99m, dupResult.Models[1].InputPerMillion, "Ambiguous short ID across providers is not merged");
+
+// Offline / failing HTTP handler keeps prior valid data and marks SyncStatus.Failed
+var syncVm = new HudViewModel(
+    new PricingCatalogService([verifiedFastEntry]),
+    new UserPreferencesStore(Path.Combine(Path.GetTempPath(), $"aipw-pw03-{Guid.NewGuid():N}.json")));
+
+var okHandler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+{
+    Content = new StringContent("""{ "data": [ { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000250", "completion": "0.00001250" } } ] }""", Encoding.UTF8, "application/json")
+});
+using (var okClient = new HttpClient(okHandler))
+{
+    await syncVm.SyncLivePricesAsync(okClient);
+}
+AssertEqual(SyncStatus.Succeeded, syncVm.SyncStatus, "Successful sync sets SyncStatus.Succeeded");
+AssertEqual(CatalogDataOrigin.LiveSynced, syncVm.DataOrigin, "Successful sync sets CatalogDataOrigin.LiveSynced");
+AssertTrue(syncVm.LastSuccessfulSyncAt.HasValue, "Records LastSuccessfulSyncAt");
+AssertEqual(2.50m, syncVm.VisibleModels[0].StandardProvenance.Status == DataVerificationStatus.Verified ? 2.50m : 0m, "Live sync updates price");
+
+var failHandler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Network unreachable"));
+using (var failClient = new HttpClient(failHandler))
+{
+    await syncVm.SyncLivePricesAsync(failClient);
+}
+AssertEqual(SyncStatus.Failed, syncVm.SyncStatus, "Offline sync sets SyncStatus.Failed");
+AssertEqual(CatalogDataOrigin.LastValid, syncVm.DataOrigin, "Failed sync after live sync preserves LastValid origin");
+AssertTrue(syncVm.CanRetrySync, "CanRetrySync is true after failure");
+AssertTrue(syncVm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase), "StatusText honestly reports sync failure");
+AssertEqual("$2.50 / $12.50", syncVm.VisibleModels[0].StandardInOutDisplay, "Failed sync retains prior live-synced prices instead of overwriting with bundled data");
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
+
+sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(responder(request));
+    }
+}
