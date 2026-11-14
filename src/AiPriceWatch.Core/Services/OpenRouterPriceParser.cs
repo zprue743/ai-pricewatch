@@ -12,7 +12,16 @@ public static class OpenRouterPriceParser
         IReadOnlyList<ModelPricingEntry> existingCatalog,
         string openRouterJson)
     {
+        return MergeLivePrices(existingCatalog, openRouterJson, out _);
+    }
+
+    public static IReadOnlyList<ModelPricingEntry> MergeLivePrices(
+        IReadOnlyList<ModelPricingEntry> existingCatalog,
+        string openRouterJson,
+        out int updatedCount)
+    {
         ArgumentNullException.ThrowIfNull(existingCatalog);
+        updatedCount = 0;
 
         if (string.IsNullOrWhiteSpace(openRouterJson))
         {
@@ -68,6 +77,7 @@ public static class OpenRouterPriceParser
                     : fullId;
 
                 liveLookup[shortId] = (inputPerM, outputPerM, cachedPerM);
+                liveLookup[NormalizeKey(shortId)] = (inputPerM, outputPerM, cachedPerM);
                 liveLookup[fullId] = (inputPerM, outputPerM, cachedPerM);
             }
         }
@@ -79,13 +89,21 @@ public static class OpenRouterPriceParser
         var updated = new List<ModelPricingEntry>(existingCatalog.Count);
         foreach (ModelPricingEntry entry in existingCatalog)
         {
-            if (liveLookup.TryGetValue(entry.Id, out var live))
+            if (liveLookup.TryGetValue(entry.Id, out var live) ||
+                liveLookup.TryGetValue(NormalizeKey(entry.Id), out live))
             {
+                updatedCount++;
+                decimal ratio = entry.InputPerMillion > 0m && entry.FastInputPerMillion.HasValue
+                    ? entry.FastInputPerMillion.Value / entry.InputPerMillion
+                    : 2.0m;
+
                 updated.Add(entry with
                 {
                     InputPerMillion = live.InputPerM,
                     OutputPerMillion = live.OutputPerM,
-                    CachedInputPerMillion = live.CachedPerM ?? entry.CachedInputPerMillion
+                    CachedInputPerMillion = live.CachedPerM ?? entry.CachedInputPerMillion,
+                    FastInputPerMillion = Math.Round(live.InputPerM * ratio, 4),
+                    FastOutputPerMillion = Math.Round(live.OutputPerM * ratio, 4)
                 });
             }
             else
@@ -95,6 +113,11 @@ public static class OpenRouterPriceParser
         }
 
         return updated;
+    }
+
+    private static string NormalizeKey(string id)
+    {
+        return id.Replace('.', '-').Trim();
     }
 
     private static bool TryReadPerMillionPrice(

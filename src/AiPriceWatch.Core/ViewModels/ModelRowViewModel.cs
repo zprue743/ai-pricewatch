@@ -11,7 +11,8 @@ public sealed class ModelRowViewModel
         int taskCachedTokens,
         int taskOutputTokens,
         bool isCheapestInView,
-        bool isFastMode = false)
+        bool isFastMode = false,
+        bool isHidden = false)
     {
         ArgumentNullException.ThrowIfNull(entry);
         Id = entry.Id;
@@ -52,6 +53,7 @@ public sealed class ModelRowViewModel
         Notes = entry.Notes;
         IsCheapestInView = isCheapestInView;
         IsFastModeActive = isFastMode;
+        IsHidden = isHidden;
     }
 
     public string Id { get; }
@@ -73,4 +75,10 @@ public sealed class ModelRowViewModel
     public string Notes { get; }
     public bool IsCheapestInView { get; }
     public bool IsFastModeActive { get; }
+    public bool IsHidden { get; }
+    public string HideActionLabel => IsHidden ? "UNHIDE" : "HIDE";
+    public string HideActionTooltip => IsHidden
+        ? "Unhide this model so it appears in the HUD"
+        : "Hide this model from the HUD";
+    public double RowOpacity => IsHidden ? 0.52 : 1.0;
 }

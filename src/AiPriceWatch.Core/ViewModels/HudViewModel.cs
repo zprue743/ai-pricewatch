@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using AiPriceWatch.Core.Models;
 using AiPriceWatch.Core.Services;
@@ -11,6 +12,8 @@ public sealed class HudViewModel : INotifyPropertyChanged
     private const double MaxOpacity = 1.0;
 
     private readonly PricingCatalogService _catalog;
+    private readonly UserPreferencesStore _preferencesStore;
+    private readonly HashSet<string> _hiddenModelIds;
     private string _selectedProvider = "All";
     private TaskTier? _selectedTier;
     private string _searchText = string.Empty;
@@ -20,15 +23,18 @@ public sealed class HudViewModel : INotifyPropertyChanged
     private int _taskCachedTokens;
     private int _taskOutputTokens;
     private bool _isFastMode;
+    private bool _showHiddenModels;
     private double _backgroundOpacity = 0.86;
     private bool _isAlwaysOnTop = true;
     private string _statusText = "Curated catalog ready";
     private IReadOnlyList<ModelRowViewModel> _visibleModels = Array.Empty<ModelRowViewModel>();
 
-    public HudViewModel(PricingCatalogService catalog)
+    public HudViewModel(PricingCatalogService catalog, UserPreferencesStore? preferencesStore = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         _catalog = catalog;
+        _preferencesStore = preferencesStore ?? new UserPreferencesStore();
+        _hiddenModelIds = _preferencesStore.LoadHiddenModels();
 
         var providerList = new List<string> { "All" };
         providerList.AddRange(_catalog.GetProviders());
@@ -55,6 +61,29 @@ public sealed class HudViewModel : INotifyPropertyChanged
     public IReadOnlyList<string> Providers { get; }
 
     public IReadOnlyList<TaskPreset> Presets { get; }
+
+    public int HiddenCount => _hiddenModelIds.Count;
+
+    public bool HasHiddenModels => _hiddenModelIds.Count > 0;
+
+    public string HiddenToggleLabel => _showHiddenModels
+        ? $"HIDE ({_hiddenModelIds.Count})"
+        : $"HIDDEN ({_hiddenModelIds.Count})";
+
+    public bool ShowHiddenModels
+    {
+        get => _showHiddenModels;
+        set
+        {
+            if (_showHiddenModels != value)
+            {
+                _showHiddenModels = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(HiddenToggleLabel));
+                RefreshVisibleModels();
+            }
+        }
+    }
 
     public string SelectedProvider
     {
@@ -246,25 +275,72 @@ public sealed class HudViewModel : INotifyPropertyChanged
         }
     }
 
+    public void ToggleModelHidden(string modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            return;
+        }
+
+        if (!_hiddenModelIds.Remove(modelId))
+        {
+            _hiddenModelIds.Add(modelId);
+        }
+
+        _preferencesStore.SaveHiddenModels(_hiddenModelIds);
+        NotifyHiddenChanged();
+        RefreshVisibleModels();
+    }
+
+    public void UnhideAllModels()
+    {
+        if (_hiddenModelIds.Count == 0)
+        {
+            return;
+        }
+
+        _hiddenModelIds.Clear();
+        _showHiddenModels = false;
+        _preferencesStore.SaveHiddenModels(_hiddenModelIds);
+        OnPropertyChanged(nameof(ShowHiddenModels));
+        NotifyHiddenChanged();
+        RefreshVisibleModels();
+    }
+
     public async Task SyncLivePricesAsync(HttpClient httpClient, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         try
         {
             StatusText = "Syncing live prices from OpenRouter...";
-            using HttpResponseMessage response = await httpClient.GetAsync("https://openrouter.ai/api/v1/models", ct);
+            using var request = new HttpRequestMessage(HttpMethod.Get, "https://openrouter.ai/api/v1/models");
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiPriceWatch", "1.0"));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            using HttpResponseMessage response = await httpClient.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
             string json = await response.Content.ReadAsStringAsync(ct);
 
-            IReadOnlyList<ModelPricingEntry> merged = OpenRouterPriceParser.MergeLivePrices(_catalog.AllModels, json);
+            IReadOnlyList<ModelPricingEntry> merged = OpenRouterPriceParser.MergeLivePrices(
+                _catalog.AllModels,
+                json,
+                out int updatedCount);
+
             _catalog.MergeEntries(merged);
             RefreshVisibleModels();
-            StatusText = $"Synced live pricing ({DateTime.Now:HH:mm})";
+            StatusText = $"Live sync OK • {updatedCount} matched ({DateTime.Now:HH:mm})";
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            StatusText = $"Offline catalog ({ex.GetType().Name})";
+            StatusText = $"Curated catalog active (offline / no network)";
         }
+    }
+
+    private void NotifyHiddenChanged()
+    {
+        OnPropertyChanged(nameof(HiddenCount));
+        OnPropertyChanged(nameof(HasHiddenModels));
+        OnPropertyChanged(nameof(HiddenToggleLabel));
     }
 
     private void RefreshVisibleModels()
@@ -279,22 +355,35 @@ public sealed class HudViewModel : INotifyPropertyChanged
             taskOutputTokens: _taskOutputTokens,
             useFastMode: _isFastMode);
 
-        if (entries.Count == 0)
+        List<ModelPricingEntry> filtered = _showHiddenModels
+            ? entries.ToList()
+            : entries.Where(e => !_hiddenModelIds.Contains(e.Id)).ToList();
+
+        if (filtered.Count == 0)
         {
             VisibleModels = Array.Empty<ModelRowViewModel>();
-            StatusText = "0 models match current filters";
+            StatusText = _hiddenModelIds.Count > 0 && !_showHiddenModels
+                ? $"0 visible ({_hiddenModelIds.Count} hidden)"
+                : "0 models match current filters";
             return;
         }
 
-        decimal minTaskCost = entries.Min(e =>
-            TaskCostCalculator.CalculateCost(e, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode));
+        IReadOnlyList<ModelPricingEntry> nonHiddenInView = filtered
+            .Where(e => !_hiddenModelIds.Contains(e.Id))
+            .ToList();
+
+        decimal? minTaskCost = nonHiddenInView.Count > 0
+            ? nonHiddenInView.Min(e =>
+                TaskCostCalculator.CalculateCost(e, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode))
+            : null;
 
         bool cheapestAssigned = false;
-        var rows = new List<ModelRowViewModel>(entries.Count);
-        foreach (ModelPricingEntry entry in entries)
+        var rows = new List<ModelRowViewModel>(filtered.Count);
+        foreach (ModelPricingEntry entry in filtered)
         {
+            bool isHidden = _hiddenModelIds.Contains(entry.Id);
             decimal cost = TaskCostCalculator.CalculateCost(entry, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode);
-            bool isCheapest = !cheapestAssigned && cost == minTaskCost;
+            bool isCheapest = !isHidden && !cheapestAssigned && minTaskCost.HasValue && cost == minTaskCost.Value;
             if (isCheapest)
             {
                 cheapestAssigned = true;
@@ -306,12 +395,14 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 _taskCachedTokens,
                 _taskOutputTokens,
                 isCheapest,
-                _isFastMode));
+                _isFastMode,
+                isHidden));
         }
 
         VisibleModels = rows;
         string modeLabel = _isFastMode ? "FAST MODE" : "STD MODE";
-        StatusText = $"{rows.Count} models • {_selectedProvider} • {modeLabel}";
+        string hiddenSuffix = _hiddenModelIds.Count > 0 ? $" • {_hiddenModelIds.Count} hidden" : string.Empty;
+        StatusText = $"{rows.Count} models • {_selectedProvider} • {modeLabel}{hiddenSuffix}";
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

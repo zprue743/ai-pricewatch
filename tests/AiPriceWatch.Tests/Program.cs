@@ -31,11 +31,8 @@ var sampleFastModel = new ModelPricingEntry(
 var noCacheModel = sampleFastModel with { CachedInputPerMillion = null, FastInputPerMillion = null, FastOutputPerMillion = null };
 
 // Task 1: Standard & Fast mode cost calculation
-// Standard: 100k input ($0.025) + 200k cached ($0.005) + 50k output ($0.100) = $0.130
 AssertEqual(0.130m, TaskCostCalculator.CalculateCost(sampleFastModel, 100_000, 200_000, 50_000, useFastMode: false), "Standard cost math");
-// Fast mode: 100k fast input ($0.050) + 200k cached ($0.005) + 50k fast output ($0.200) = $0.255
 AssertEqual(0.255m, TaskCostCalculator.CalculateCost(sampleFastModel, 100_000, 200_000, 50_000, useFastMode: true), "Fast mode cost math");
-// Fallback when FastInput/Output are null: uses standard Input/Output
 AssertEqual(0.050m, TaskCostCalculator.CalculateCost(noCacheModel, 100_000, 100_000, 0, useFastMode: true), "Null cached & fast price fallback");
 AssertEqual(0m, TaskCostCalculator.CalculateCost(sampleFastModel, -5000, -1000, -2000), "Negative tokens clamped to 0");
 AssertEqual("$0.0000", TaskCostCalculator.FormatCost(0m), "Zero cost format");
@@ -95,43 +92,96 @@ string sampleOpenRouterJson = """
       "pricing": { "prompt": "0.00000020", "completion": "0.00000180", "input_cache_read": "0.00000002" }
     },
     {
+      "id": "anthropic/claude-sonnet-4.6",
+      "pricing": { "prompt": "0.00000280", "completion": "0.00001400" }
+    },
+    {
       "id": "anthropic/claude-sonnet-5-5",
       "pricing": { "prompt": "-1", "completion": "invalid" }
     }
   ]
 }
 """;
-var merged = OpenRouterPriceParser.MergeLivePrices(catalog.AllModels, sampleOpenRouterJson);
+var merged = OpenRouterPriceParser.MergeLivePrices(catalog.AllModels, sampleOpenRouterJson, out int updatedCount);
+AssertEqual(2, updatedCount, "Reports exact count of models updated from OpenRouter payload");
 var updatedMini = merged.First(m => m.Id == "gpt-5-mini");
 AssertEqual(0.20m, updatedMini.InputPerMillion, "OpenRouter per-token prompt price converted to $/1M");
 AssertEqual(1.80m, updatedMini.OutputPerMillion, "OpenRouter per-token completion price converted to $/1M");
 AssertEqual(0.02m, updatedMini.CachedInputPerMillion, "OpenRouter per-token cache read price converted to $/1M");
+var updatedSonnet46 = merged.First(m => m.Id == "claude-sonnet-4-6");
+AssertEqual(2.80m, updatedSonnet46.InputPerMillion, "Matches dotted OpenRouter ID claude-sonnet-4.6 to claude-sonnet-4-6");
 
-// Task 3: HUD ViewModel, Fast Mode Toggle & Task Presets
-var vm = new HudViewModel(PricingCatalogService.LoadDefault());
-AssertEqual("All", vm.SelectedProvider, "Default provider is All");
-AssertEqual(false, vm.IsFastMode, "Default IsFastMode is false");
-AssertTrue(vm.VisibleModels.Count >= 24, "Shows all models initially");
-AssertTrue(vm.VisibleModels.Any(m => m.IsCheapestInView), "Marks cheapest model in view");
+// Task 3: HUD ViewModel, Fast Mode Toggle, Hide/Unhide Models & Persistence
+string tempPrefsPath = Path.Combine(Path.GetTempPath(), $"aipricewatch-prefs-{Guid.NewGuid():N}.json");
+try
+{
+    var prefsStore = new UserPreferencesStore(tempPrefsPath);
+    var vm = new HudViewModel(PricingCatalogService.LoadDefault(), prefsStore);
+    int initialTotal = vm.VisibleModels.Count;
+    AssertEqual("All", vm.SelectedProvider, "Default provider is All");
+    AssertEqual(false, vm.IsFastMode, "Default IsFastMode is false");
+    AssertEqual(0, vm.HiddenCount, "Initially 0 hidden models");
+    AssertTrue(initialTotal >= 24, "Shows all models initially");
+    AssertTrue(vm.VisibleModels.Any(m => m.IsCheapestInView), "Marks cheapest model in view");
 
-var grok46Standard = vm.VisibleModels.First(m => m.Id == "grok-4.6").EstimatedTaskCostRaw;
-vm.IsFastMode = true;
-var grok46Fast = vm.VisibleModels.First(m => m.Id == "grok-4.6").EstimatedTaskCostRaw;
-AssertTrue(grok46Fast > grok46Standard, "Toggling IsFastMode increases estimated task cost to Fast mode rate");
+    // Hide a model and verify it disappears when ShowHiddenModels is false
+    vm.ToggleModelHidden("grok-build-0.1");
+    AssertEqual(1, vm.HiddenCount, "HiddenCount is 1 after hiding a model");
+    AssertEqual(initialTotal - 1, vm.VisibleModels.Count, "Hidden model is excluded from VisibleModels by default");
+    AssertTrue(vm.VisibleModels.All(m => m.Id != "grok-build-0.1"), "grok-build-0.1 is hidden");
 
-// Provider switching updates VisibleModels
-vm.SelectedProvider = "Cursor";
-AssertTrue(vm.VisibleModels.All(m => m.Provider == "Cursor"), "Filtering by Cursor only shows Cursor Composer models");
+    // Verify persistence across new ViewModel instance
+    var vmReloaded = new HudViewModel(PricingCatalogService.LoadDefault(), prefsStore);
+    AssertEqual(1, vmReloaded.HiddenCount, "Reloaded ViewModel restores hidden model count from disk");
+    AssertTrue(vmReloaded.VisibleModels.All(m => m.Id != "grok-build-0.1"), "Reloaded ViewModel keeps grok-build-0.1 hidden");
 
-// Selecting preset updates token counts and recomputes task cost
-var longContextPreset = vm.Presets.First(p => p.InputTokens >= 200_000);
-vm.SelectedPreset = longContextPreset;
-AssertEqual(longContextPreset.InputTokens, vm.TaskInputTokens, "Preset updates TaskInputTokens");
+    // Toggle ShowHiddenModels = true to view and unhide hidden models
+    vm.ShowHiddenModels = true;
+    AssertEqual(initialTotal, vm.VisibleModels.Count, "When ShowHiddenModels is true, all models including hidden ones are visible");
+    var hiddenRow = vm.VisibleModels.First(m => m.Id == "grok-build-0.1");
+    AssertTrue(hiddenRow.IsHidden, "Hidden row has IsHidden == true");
+    AssertEqual("UNHIDE", hiddenRow.HideActionLabel, "Hidden row displays UNHIDE button label");
 
-// Opacity clamping (Review Focus #5)
-vm.BackgroundOpacity = 0.05;
-AssertEqual(0.35, vm.BackgroundOpacity, "Clamps minimum opacity to 0.35");
-vm.BackgroundOpacity = 1.5;
-AssertEqual(1.0, vm.BackgroundOpacity, "Clamps maximum opacity to 1.0");
+    // Unhide the model via ToggleModelHidden
+    vm.ToggleModelHidden("grok-build-0.1");
+    AssertEqual(0, vm.HiddenCount, "HiddenCount returns to 0 after unhiding");
+    AssertTrue(!vm.VisibleModels.First(m => m.Id == "grok-build-0.1").IsHidden, "Model is no longer marked hidden");
+
+    // Hide two models and test UnhideAllModels()
+    vm.ShowHiddenModels = false;
+    vm.ToggleModelHidden("gpt-5-mini");
+    vm.ToggleModelHidden("composer-2");
+    AssertEqual(2, vm.HiddenCount, "HiddenCount is 2");
+    vm.UnhideAllModels();
+    AssertEqual(0, vm.HiddenCount, "UnhideAllModels clears all hidden models");
+    AssertEqual(initialTotal, vm.VisibleModels.Count, "All models visible again after UnhideAllModels");
+
+    var grok46Standard = vm.VisibleModels.First(m => m.Id == "grok-4.6").EstimatedTaskCostRaw;
+    vm.IsFastMode = true;
+    var grok46Fast = vm.VisibleModels.First(m => m.Id == "grok-4.6").EstimatedTaskCostRaw;
+    AssertTrue(grok46Fast > grok46Standard, "Toggling IsFastMode increases estimated task cost to Fast mode rate");
+
+    // Provider switching updates VisibleModels
+    vm.SelectedProvider = "Cursor";
+    AssertTrue(vm.VisibleModels.All(m => m.Provider == "Cursor"), "Filtering by Cursor only shows Cursor Composer models");
+
+    // Selecting preset updates token counts and recomputes task cost
+    var longContextPreset = vm.Presets.First(p => p.InputTokens >= 200_000);
+    vm.SelectedPreset = longContextPreset;
+    AssertEqual(longContextPreset.InputTokens, vm.TaskInputTokens, "Preset updates TaskInputTokens");
+
+    // Opacity clamping (Review Focus #5)
+    vm.BackgroundOpacity = 0.05;
+    AssertEqual(0.35, vm.BackgroundOpacity, "Clamps minimum opacity to 0.35");
+    vm.BackgroundOpacity = 1.5;
+    AssertEqual(1.0, vm.BackgroundOpacity, "Clamps maximum opacity to 1.0");
+}
+finally
+{
+    if (File.Exists(tempPrefsPath))
+    {
+        File.Delete(tempPrefsPath);
+    }
+}
 
 Console.WriteLine($"All tests passed ({passed} assertions).");

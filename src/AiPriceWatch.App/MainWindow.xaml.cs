@@ -148,6 +148,32 @@ public partial class MainWindow : Window
             : Color.FromRgb(0x30, 0x36, 0x3D));
     }
 
+    private void RowHideButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string modelId })
+        {
+            _viewModel.ToggleModelHidden(modelId);
+        }
+    }
+
+    private void ToggleShowHiddenButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.ShowHiddenModels = !_viewModel.ShowHiddenModels;
+        ToggleShowHiddenButton.Foreground = new SolidColorBrush(_viewModel.ShowHiddenModels
+            ? Color.FromRgb(0x58, 0xA6, 0xFF)
+            : Color.FromRgb(0x8B, 0x94, 0x9E));
+        ToggleShowHiddenButton.BorderBrush = new SolidColorBrush(_viewModel.ShowHiddenModels
+            ? Color.FromRgb(0x58, 0xA6, 0xFF)
+            : Color.FromRgb(0x30, 0x36, 0x3D));
+    }
+
+    private void UnhideAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.UnhideAllModels();
+        ToggleShowHiddenButton.Foreground = new SolidColorBrush(Color.FromRgb(0x8B, 0x94, 0x9E));
+        ToggleShowHiddenButton.BorderBrush = new SolidColorBrush(Color.FromRgb(0x30, 0x36, 0x3D));
+    }
+
     private void PinButton_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.IsAlwaysOnTop = !_viewModel.IsAlwaysOnTop;
