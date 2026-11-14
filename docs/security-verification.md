@@ -6,9 +6,9 @@ This document describes how AI PriceWatch releases are built, scanned, verified,
 
 | Channel | Format | Code Signing | Update Mechanism |
 |---|---|---|---|
-| **Microsoft Store** | MSIX (`AiPriceWatch-<ver>-win-x64.msix`) | Signed by Microsoft during Store certification | Microsoft Store automatic updates (Velopack disabled) |
+| **GitHub Releases** | Velopack EXE (`AiPriceWatch-win-Setup.exe`) + nupkgs | **Unsigned** | Velopack in-app updates via GitHub Releases |
 | **WinGet** | Velopack EXE (`AiPriceWatch-win-Setup.exe`) | **Unsigned** | Velopack in-app updates via GitHub Releases |
-| **GitHub Releases** | Velopack EXE + MSIX + nupkgs | EXE is **unsigned**; MSIX is for Store upload | Velopack in-app updates for EXE installs |
+| **Microsoft Store (Planned)** | MSIX (`AiPriceWatch-<ver>-win-x64.msix`) | Signed by Microsoft once submitted &amp; certified | Microsoft Store automatic updates (Velopack disabled) |
 
 > **Important:** Antivirus scans, SHA-256 checksums, and GitHub build attestations verify file integrity and build provenance. They do **not** substitute for Authenticode code signing or eliminate Windows SmartScreen warnings on unsigned EXE installers.
 

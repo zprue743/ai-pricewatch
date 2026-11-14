@@ -8,17 +8,7 @@ A lightweight, transparent desktop HUD overlay for Windows 10/11 that lets you c
 
 No separate `.NET` runtime installation is required.
 
-### Option 1: Microsoft Store (MSIX — Recommended)
-- Installed, signed, and automatically updated by Microsoft Store.
-- Velopack in-app updates are automatically disabled on Store-managed installs.
-
-### Option 2: WinGet (Developer CLI)
-```powershell
-winget install zprue743.AiPriceWatch
-```
-- Uses the GitHub-hosted Velopack installer (**unsigned**) with in-app Velopack updates.
-
-### Option 3: GitHub Releases (Velopack Installer)
+### Option 1: GitHub Releases (Velopack Installer)
 1. Download **[AiPriceWatch-win-Setup.exe](https://github.com/zprue743/ai-pricewatch/releases/latest/download/AiPriceWatch-win-Setup.exe)** from [GitHub Releases](https://github.com/zprue743/ai-pricewatch/releases) or the **[Download Page](https://zprue743.github.io/ai-pricewatch/)**.
 2. Verify the download's integrity and build provenance (recommended, as the GitHub EXE is **unsigned**):
    ```powershell
@@ -27,6 +17,12 @@ winget install zprue743.AiPriceWatch
    ```
 3. Run `AiPriceWatch-win-Setup.exe` to install and launch.
 4. **Updating:** Velopack installs check GitHub Releases for updates and surface an **`UPDATE`** button in the top bar (and in the tray menu).
+
+### Option 2: WinGet (Pending Upstream Review)
+```powershell
+winget install zprue743.AiPriceWatch
+```
+- Uses the GitHub-hosted Velopack installer (**unsigned**) with in-app Velopack updates (submitted in `microsoft/winget-pkgs#480344`).
 
 See [docs/security-verification.md](docs/security-verification.md) for full details on Microsoft Defender scanning, SHA-256 checksums, GitHub Artifact Attestations, and VirusTotal verification.
 
