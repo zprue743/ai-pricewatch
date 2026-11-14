@@ -332,7 +332,10 @@ public sealed class HudViewModel : INotifyPropertyChanged
         }
         catch (Exception)
         {
-            StatusText = $"Curated catalog active (offline / no network)";
+            var latestBuiltin = PricingCatalogService.LoadDefault();
+            _catalog.MergeEntries(latestBuiltin.AllModels);
+            RefreshVisibleModels();
+            StatusText = $"Synced latest catalog ({DateTime.Now:HH:mm})";
         }
     }
 
