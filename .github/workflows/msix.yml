@@ -1,0 +1,55 @@
+name: Build MSIX Package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'packaging/msix/**'
+      - 'src/AiPriceWatch.App/**'
+
+permissions:
+  contents: read
+
+jobs:
+  pack-msix:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Read version from Directory.Build.props
+        id: ver
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content "Directory.Build.props"
+          echo "version=$($props.Project.PropertyGroup.Version)" >> $env:GITHUB_OUTPUT
+
+      - name: Publish self-contained win-x64
+        run: >
+          dotnet publish src/AiPriceWatch.App/AiPriceWatch.App.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o publish
+
+      - name: Build Store-compatible MSIX
+        shell: pwsh
+        run: |
+          ./packaging/msix/build-msix.ps1 `
+            -Version "${{ steps.ver.outputs.version }}" `
+            -PublishDir "publish" `
+            -OutputPath "out/AiPriceWatch-${{ steps.ver.outputs.version }}-win-x64.msix"
+
+      - name: Upload MSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-package
+          path: out/AiPriceWatch-*.msix

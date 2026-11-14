@@ -4,9 +4,18 @@ using AiPriceWatch.Core.Models;
 
 namespace AiPriceWatch.Core.Services;
 
+public sealed record OpenRouterSyncResult(
+    IReadOnlyList<ModelPricingEntry> Models,
+    bool IsValidPayload,
+    int UpdatedCount,
+    int IgnoredCount,
+    int DuplicateCount,
+    string? ErrorMessage = null);
+
 public static class OpenRouterPriceParser
 {
     private const decimal OneMillion = 1_000_000m;
+    private const decimal MaxReasonablePricePerMillion = 100_000m;
 
     public static IReadOnlyList<ModelPricingEntry> MergeLivePrices(
         IReadOnlyList<ModelPricingEntry> existingCatalog,
@@ -20,90 +29,180 @@ public static class OpenRouterPriceParser
         string openRouterJson,
         out int updatedCount)
     {
+        OpenRouterSyncResult result = MergeLivePricesDetailed(existingCatalog, openRouterJson);
+        updatedCount = result.UpdatedCount;
+        return result.Models;
+    }
+
+    public static OpenRouterSyncResult MergeLivePricesDetailed(
+        IReadOnlyList<ModelPricingEntry> existingCatalog,
+        string openRouterJson)
+    {
         ArgumentNullException.ThrowIfNull(existingCatalog);
-        updatedCount = 0;
 
         if (string.IsNullOrWhiteSpace(openRouterJson))
         {
-            return existingCatalog;
+            return new OpenRouterSyncResult(
+                existingCatalog,
+                IsValidPayload: false,
+                UpdatedCount: 0,
+                IgnoredCount: 0,
+                DuplicateCount: 0,
+                ErrorMessage: "OpenRouter response was empty.");
         }
 
-        var liveLookup = new Dictionary<string, (decimal InputPerM, decimal OutputPerM, decimal? CachedPerM)>(
+        var fullIdLookup = new Dictionary<string, (decimal InputPerM, decimal OutputPerM, decimal? CachedPerM)>(
             StringComparer.OrdinalIgnoreCase);
+        var shortIdCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var shortIdLookup = new Dictionary<string, (decimal InputPerM, decimal OutputPerM, decimal? CachedPerM)>(
+            StringComparer.OrdinalIgnoreCase);
+
+        int ignoredCount = 0;
+        int duplicateCount = 0;
 
         try
         {
             using JsonDocument doc = JsonDocument.Parse(openRouterJson);
-            if (!doc.RootElement.TryGetProperty("data", out JsonElement dataArray) ||
+            if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                !doc.RootElement.TryGetProperty("data", out JsonElement dataArray) ||
                 dataArray.ValueKind != JsonValueKind.Array)
             {
-                return existingCatalog;
+                return new OpenRouterSyncResult(
+                    existingCatalog,
+                    IsValidPayload: false,
+                    UpdatedCount: 0,
+                    IgnoredCount: 0,
+                    DuplicateCount: 0,
+                    ErrorMessage: "OpenRouter payload missing 'data' array.");
             }
 
             foreach (JsonElement item in dataArray.EnumerateArray())
             {
-                if (!item.TryGetProperty("id", out JsonElement idElem) ||
+                if (item.ValueKind != JsonValueKind.Object ||
+                    !item.TryGetProperty("id", out JsonElement idElem) ||
                     idElem.ValueKind != JsonValueKind.String)
                 {
+                    ignoredCount++;
                     continue;
                 }
 
-                string? fullId = idElem.GetString();
+                string? fullId = idElem.GetString()?.Trim();
                 if (string.IsNullOrWhiteSpace(fullId))
                 {
+                    ignoredCount++;
+                    continue;
+                }
+
+                if (fullIdLookup.ContainsKey(fullId))
+                {
+                    duplicateCount++;
+                    ignoredCount++;
                     continue;
                 }
 
                 if (!item.TryGetProperty("pricing", out JsonElement pricingElem) ||
                     pricingElem.ValueKind != JsonValueKind.Object)
                 {
+                    ignoredCount++;
                     continue;
                 }
 
                 if (!TryReadPerMillionPrice(pricingElem, "prompt", out decimal inputPerM) ||
                     !TryReadPerMillionPrice(pricingElem, "completion", out decimal outputPerM))
                 {
+                    ignoredCount++;
                     continue;
                 }
 
                 decimal? cachedPerM = null;
-                if (TryReadPerMillionPrice(pricingElem, "input_cache_read", out decimal parsedCache))
+                if (pricingElem.TryGetProperty("input_cache_read", out _) &&
+                    TryReadPerMillionPrice(pricingElem, "input_cache_read", out decimal parsedCache))
                 {
                     cachedPerM = parsedCache;
                 }
+
+                var rate = (inputPerM, outputPerM, cachedPerM);
+                fullIdLookup[fullId] = rate;
 
                 string shortId = fullId.Contains('/')
                     ? fullId[(fullId.IndexOf('/') + 1)..]
                     : fullId;
 
-                liveLookup[shortId] = (inputPerM, outputPerM, cachedPerM);
-                liveLookup[NormalizeKey(shortId)] = (inputPerM, outputPerM, cachedPerM);
-                liveLookup[fullId] = (inputPerM, outputPerM, cachedPerM);
+                shortIdCounts[shortId] = shortIdCounts.GetValueOrDefault(shortId) + 1;
+                if (shortIdCounts[shortId] == 1)
+                {
+                    shortIdLookup[shortId] = rate;
+                }
+                else
+                {
+                    // Ambiguous short ID across multiple providers: never match by short ID alone.
+                    shortIdLookup.Remove(shortId);
+                }
             }
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            return existingCatalog;
+            return new OpenRouterSyncResult(
+                existingCatalog,
+                IsValidPayload: false,
+                UpdatedCount: 0,
+                IgnoredCount: ignoredCount,
+                DuplicateCount: duplicateCount,
+                ErrorMessage: $"Invalid OpenRouter JSON: {ex.Message}");
         }
+
+        if (fullIdLookup.Count == 0)
+        {
+            return new OpenRouterSyncResult(
+                existingCatalog,
+                IsValidPayload: false,
+                UpdatedCount: 0,
+                IgnoredCount: ignoredCount,
+                DuplicateCount: duplicateCount,
+                ErrorMessage: "OpenRouter response contained no valid model pricing entries.");
+        }
+
+        int updatedCount = 0;
+        DateTimeOffset syncedAt = DateTimeOffset.UtcNow;
+        var openRouterProvenance = new FieldProvenance(
+            SourceName: "OpenRouter API",
+            SourceUrl: "https://openrouter.ai/api/v1/models",
+            SourceType: PriceSourceType.OpenRouter,
+            LastVerifiedAt: syncedAt,
+            Status: DataVerificationStatus.Verified);
 
         var updated = new List<ModelPricingEntry>(existingCatalog.Count);
         foreach (ModelPricingEntry entry in existingCatalog)
         {
-            if (liveLookup.TryGetValue(entry.Id, out var live) ||
-                liveLookup.TryGetValue(NormalizeKey(entry.Id), out live))
+            bool matched = false;
+            (decimal InputPerM, decimal OutputPerM, decimal? CachedPerM) live = default;
+
+            if (!string.IsNullOrWhiteSpace(entry.OpenRouterId) &&
+                fullIdLookup.TryGetValue(entry.OpenRouterId, out live))
+            {
+                matched = true;
+            }
+            else if (fullIdLookup.TryGetValue(entry.Id, out live))
+            {
+                matched = true;
+            }
+            else if (string.IsNullOrWhiteSpace(entry.OpenRouterId) &&
+                     shortIdLookup.TryGetValue(entry.Id, out live))
+            {
+                matched = true;
+            }
+
+            if (matched)
             {
                 updatedCount++;
-                decimal ratio = entry.InputPerMillion > 0m && entry.FastInputPerMillion.HasValue
-                    ? entry.FastInputPerMillion.Value / entry.InputPerMillion
-                    : 2.0m;
-
+                // PW-02: Never derive or overwrite Fast/Priority pricing from OpenRouter standard rates.
                 updated.Add(entry with
                 {
                     InputPerMillion = live.InputPerM,
                     OutputPerMillion = live.OutputPerM,
                     CachedInputPerMillion = live.CachedPerM ?? entry.CachedInputPerMillion,
-                    FastInputPerMillion = Math.Round(live.InputPerM * ratio, 4),
-                    FastOutputPerMillion = Math.Round(live.OutputPerM * ratio, 4)
+                    PricingSource = openRouterProvenance,
+                    CachedPricingSource = live.CachedPerM.HasValue ? openRouterProvenance : entry.CachedPricingSource
                 });
             }
             else
@@ -112,12 +211,12 @@ public static class OpenRouterPriceParser
             }
         }
 
-        return updated;
-    }
-
-    private static string NormalizeKey(string id)
-    {
-        return id.Replace('.', '-').Trim();
+        return new OpenRouterSyncResult(
+            updated,
+            IsValidPayload: true,
+            UpdatedCount: updatedCount,
+            IgnoredCount: ignoredCount,
+            DuplicateCount: duplicateCount);
     }
 
     private static bool TryReadPerMillionPrice(
@@ -145,7 +244,13 @@ public static class OpenRouterPriceParser
             return false;
         }
 
-        pricePerMillion = Math.Round(perToken * OneMillion, 4);
+        decimal scaled = Math.Round(perToken * OneMillion, 4);
+        if (scaled > MaxReasonablePricePerMillion)
+        {
+            return false;
+        }
+
+        pricePerMillion = scaled;
         return true;
     }
 }

@@ -36,13 +36,11 @@ public sealed class ModelRowViewModel
         OutputPriceDisplay = TaskCostCalculator.FormatPricePerMillion(entry.OutputPerMillion);
         StandardInOutDisplay = TaskCostCalculator.FormatInOutPair(entry.InputPerMillion, entry.OutputPerMillion);
 
-        decimal fastIn = entry.FastInputPerMillion ?? entry.InputPerMillion;
-        decimal fastOut = entry.FastOutputPerMillion ?? entry.OutputPerMillion;
-        FastInOutDisplay = TaskCostCalculator.FormatInOutPair(fastIn, fastOut);
+        FastInOutDisplay = TaskCostCalculator.FormatInOutPair(entry.FastInputPerMillion, entry.FastOutputPerMillion);
 
         ContextDisplay = TaskCostCalculator.FormatContextWindow(entry.ContextTokens);
 
-        EstimatedTaskCostRaw = TaskCostCalculator.CalculateCost(
+        EstimatedTaskCostRaw = TaskCostCalculator.CalculateCostOrNull(
             entry,
             taskInputTokens,
             taskCachedTokens,
@@ -51,6 +49,27 @@ public sealed class ModelRowViewModel
 
         EstimatedTaskCostDisplay = TaskCostCalculator.FormatCost(EstimatedTaskCostRaw);
         Notes = entry.Notes;
+        StandardProvenance = entry.EffectiveStandardProvenance;
+        CachedProvenance = entry.EffectiveCachedProvenance;
+        FastProvenance = entry.EffectiveFastProvenance;
+        BenchmarkProvenance = entry.EffectiveBenchmarkProvenance;
+
+        PricingSourceBadge = StandardProvenance.SourceType switch
+        {
+            PriceSourceType.DirectProvider => "Direct",
+            PriceSourceType.OpenRouter => "OpenRouter",
+            PriceSourceType.Estimate => "Estimated",
+            _ => "Unknown"
+        };
+
+        StandardPricingTooltip = $"Standard: {StandardProvenance.FormatSummary()}";
+        CachedPricingTooltip = $"Cached: {CachedProvenance.FormatSummary()}";
+        FastPricingTooltip = $"Fast/Priority: {FastProvenance.FormatSummary()}";
+        BenchmarkTooltip = BenchmarkProvenance.FormatSummary();
+        RowDetailsTooltip = string.IsNullOrWhiteSpace(entry.Notes)
+            ? $"{StandardPricingTooltip}\n{CachedPricingTooltip}\n{FastPricingTooltip}\nBenchmark: {BenchmarkTooltip}"
+            : $"{entry.Notes}\n\n{StandardPricingTooltip}\n{CachedPricingTooltip}\n{FastPricingTooltip}\nBenchmark: {BenchmarkTooltip}";
+
         IsCheapestInView = isCheapestInView;
         IsFastModeActive = isFastMode;
         IsHidden = isHidden;
@@ -70,9 +89,19 @@ public sealed class ModelRowViewModel
     public string StandardInOutDisplay { get; }
     public string FastInOutDisplay { get; }
     public string ContextDisplay { get; }
-    public decimal EstimatedTaskCostRaw { get; }
+    public decimal? EstimatedTaskCostRaw { get; }
     public string EstimatedTaskCostDisplay { get; }
     public string Notes { get; }
+    public FieldProvenance StandardProvenance { get; }
+    public FieldProvenance CachedProvenance { get; }
+    public FieldProvenance FastProvenance { get; }
+    public BenchmarkProvenance BenchmarkProvenance { get; }
+    public string PricingSourceBadge { get; }
+    public string StandardPricingTooltip { get; }
+    public string CachedPricingTooltip { get; }
+    public string FastPricingTooltip { get; }
+    public string BenchmarkTooltip { get; }
+    public string RowDetailsTooltip { get; }
     public bool IsCheapestInView { get; }
     public bool IsFastModeActive { get; }
     public bool IsHidden { get; }

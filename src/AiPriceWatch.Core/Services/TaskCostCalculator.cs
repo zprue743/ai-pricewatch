@@ -14,18 +14,38 @@ public static class TaskCostCalculator
         int outputTokens,
         bool useFastMode = false)
     {
+        return CalculateCostOrNull(model, inputTokens, cachedInputTokens, outputTokens, useFastMode) ?? 0m;
+    }
+
+    public static decimal? CalculateCostOrNull(
+        ModelPricingEntry model,
+        int inputTokens,
+        int cachedInputTokens,
+        int outputTokens,
+        bool useFastMode = false)
+    {
         ArgumentNullException.ThrowIfNull(model);
+
+        if (model.InputPerMillion < 0m || model.OutputPerMillion < 0m)
+        {
+            return null;
+        }
+
+        if (useFastMode && (!model.FastInputPerMillion.HasValue || !model.FastOutputPerMillion.HasValue))
+        {
+            return null;
+        }
 
         long clampedInput = Math.Max(0, inputTokens);
         long clampedCached = Math.Max(0, cachedInputTokens);
         long clampedOutput = Math.Max(0, outputTokens);
 
         decimal activeInputRate = useFastMode
-            ? (model.FastInputPerMillion ?? model.InputPerMillion)
+            ? model.FastInputPerMillion!.Value
             : model.InputPerMillion;
 
         decimal activeOutputRate = useFastMode
-            ? (model.FastOutputPerMillion ?? model.OutputPerMillion)
+            ? model.FastOutputPerMillion!.Value
             : model.OutputPerMillion;
 
         decimal effectiveCachedRate = model.CachedInputPerMillion ?? activeInputRate;
@@ -35,6 +55,16 @@ public static class TaskCostCalculator
         decimal outputCost = (clampedOutput / OneMillion) * activeOutputRate;
 
         return Math.Max(0m, inputCost + cachedCost + outputCost);
+    }
+
+    public static string FormatCost(decimal? costUsd)
+    {
+        if (costUsd is null)
+        {
+            return "N/A";
+        }
+
+        return FormatCost(costUsd.Value);
     }
 
     public static string FormatCost(decimal costUsd)
@@ -77,7 +107,7 @@ public static class TaskCostCalculator
     {
         if (inputPerMillion is null || outputPerMillion is null)
         {
-            return "—";
+            return "N/A";
         }
 
         return $"{FormatPricePerMillion(inputPerMillion)} / {FormatPricePerMillion(outputPerMillion)}";
@@ -87,7 +117,7 @@ public static class TaskCostCalculator
     {
         if (score is null || score.Value <= 0m)
         {
-            return "—";
+            return "N/A";
         }
 
         return string.Create(CultureInfo.InvariantCulture, $"{score.Value:F1}");

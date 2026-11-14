@@ -6,10 +6,26 @@ using AiPriceWatch.Core.Services;
 
 namespace AiPriceWatch.Core.ViewModels;
 
+public enum CatalogDataOrigin
+{
+    Bundled = 0,
+    LastValid = 1,
+    LiveSynced = 2
+}
+
+public enum SyncStatus
+{
+    Idle = 0,
+    Syncing = 1,
+    Succeeded = 2,
+    Failed = 3
+}
+
 public sealed class HudViewModel : INotifyPropertyChanged
 {
     private const double MinOpacity = 0.35;
     private const double MaxOpacity = 1.0;
+    private static readonly TimeSpan SyncTimeout = TimeSpan.FromSeconds(15);
 
     private readonly PricingCatalogService _catalog;
     private readonly UserPreferencesStore _preferencesStore;
@@ -26,7 +42,16 @@ public sealed class HudViewModel : INotifyPropertyChanged
     private bool _showHiddenModels;
     private double _backgroundOpacity = 0.86;
     private bool _isAlwaysOnTop = true;
-    private string _statusText = "Curated catalog ready";
+    private string _statusText = "Bundled catalog ready";
+    private CatalogDataOrigin _dataOrigin = CatalogDataOrigin.Bundled;
+    private SyncStatus _syncStatus = SyncStatus.Idle;
+    private DateTimeOffset? _lastSuccessfulSyncAt;
+    private string? _lastSyncError;
+    private int _lastSyncMatchedCount;
+    private int _lastSyncIgnoredCount;
+    private bool _hasDismissedOnboarding;
+    private bool _hasShownTrayMinimizeNotice;
+    private bool _startWithWindows;
     private IReadOnlyList<ModelRowViewModel> _visibleModels = Array.Empty<ModelRowViewModel>();
 
     public HudViewModel(PricingCatalogService catalog, UserPreferencesStore? preferencesStore = null)
@@ -34,7 +59,8 @@ public sealed class HudViewModel : INotifyPropertyChanged
         ArgumentNullException.ThrowIfNull(catalog);
         _catalog = catalog;
         _preferencesStore = preferencesStore ?? new UserPreferencesStore();
-        _hiddenModelIds = _preferencesStore.LoadHiddenModels();
+        UserPreferences prefs = _preferencesStore.Load();
+        _hiddenModelIds = new HashSet<string>(prefs.HiddenModelIds, StringComparer.OrdinalIgnoreCase);
 
         var providerList = new List<string> { "All" };
         providerList.AddRange(_catalog.GetProviders());
@@ -48,10 +74,25 @@ public sealed class HudViewModel : INotifyPropertyChanged
             new TaskPreset("Repo Audit", 250_000, 0, 16_000, "250K in / 16K out")
         ];
 
-        _selectedPreset = Presets[1]; // Default to Code Feature (50K in / 8K out)
-        _taskInputTokens = _selectedPreset.InputTokens;
-        _taskCachedTokens = _selectedPreset.CachedInputTokens;
-        _taskOutputTokens = _selectedPreset.OutputTokens;
+        _selectedProvider = providerList.Contains(prefs.SelectedProvider, StringComparer.OrdinalIgnoreCase)
+            ? providerList.First(p => string.Equals(p, prefs.SelectedProvider, StringComparison.OrdinalIgnoreCase))
+            : "All";
+        _selectedTier = prefs.SelectedTier;
+        _selectedSort = prefs.SelectedSort;
+        _isFastMode = prefs.IsFastMode;
+        _backgroundOpacity = Math.Clamp(prefs.BackgroundOpacity, MinOpacity, MaxOpacity);
+        _isAlwaysOnTop = prefs.IsAlwaysOnTop;
+        _hasDismissedOnboarding = prefs.HasDismissedOnboarding;
+        _hasShownTrayMinimizeNotice = prefs.HasShownTrayMinimizeNotice;
+        _startWithWindows = prefs.StartWithWindows;
+
+        _selectedPreset = Presets.FirstOrDefault(p =>
+            string.Equals(p.Name, prefs.SelectedPresetName, StringComparison.OrdinalIgnoreCase))
+            ?? Presets[1]; // Default to Code Feature (50K in / 8K out)
+
+        _taskInputTokens = prefs.TaskInputTokens ?? _selectedPreset.InputTokens;
+        _taskCachedTokens = prefs.TaskCachedTokens ?? _selectedPreset.CachedInputTokens;
+        _taskOutputTokens = prefs.TaskOutputTokens ?? _selectedPreset.OutputTokens;
 
         RefreshVisibleModels();
     }
@@ -95,6 +136,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _selectedProvider = normalized;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -109,6 +151,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _selectedTier = value;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -138,6 +181,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _selectedSort = value;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -158,6 +202,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(TaskInputTokens));
                 OnPropertyChanged(nameof(TaskCachedTokens));
                 OnPropertyChanged(nameof(TaskOutputTokens));
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -173,6 +218,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _taskInputTokens = clamped;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -188,6 +234,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _taskCachedTokens = clamped;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -203,6 +250,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _taskOutputTokens = clamped;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -217,6 +265,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _isFastMode = value;
                 OnPropertyChanged();
+                SavePreferences();
                 RefreshVisibleModels();
             }
         }
@@ -233,6 +282,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 _backgroundOpacity = clamped;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(OpacityPercentageDisplay));
+                SavePreferences();
             }
         }
     }
@@ -248,6 +298,49 @@ public sealed class HudViewModel : INotifyPropertyChanged
             {
                 _isAlwaysOnTop = value;
                 OnPropertyChanged();
+                SavePreferences();
+            }
+        }
+    }
+
+    public bool HasDismissedOnboarding
+    {
+        get => _hasDismissedOnboarding;
+        set
+        {
+            if (_hasDismissedOnboarding != value)
+            {
+                _hasDismissedOnboarding = value;
+                OnPropertyChanged();
+                SavePreferences();
+            }
+        }
+    }
+
+    public bool HasShownTrayMinimizeNotice
+    {
+        get => _hasShownTrayMinimizeNotice;
+        set
+        {
+            if (_hasShownTrayMinimizeNotice != value)
+            {
+                _hasShownTrayMinimizeNotice = value;
+                OnPropertyChanged();
+                SavePreferences();
+            }
+        }
+    }
+
+    public bool StartWithWindows
+    {
+        get => _startWithWindows;
+        set
+        {
+            if (_startWithWindows != value)
+            {
+                _startWithWindows = value;
+                OnPropertyChanged();
+                SavePreferences();
             }
         }
     }
@@ -260,6 +353,90 @@ public sealed class HudViewModel : INotifyPropertyChanged
             if (_statusText != value)
             {
                 _statusText = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public CatalogDataOrigin DataOrigin
+    {
+        get => _dataOrigin;
+        private set
+        {
+            if (_dataOrigin != value)
+            {
+                _dataOrigin = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public SyncStatus SyncStatus
+    {
+        get => _syncStatus;
+        private set
+        {
+            if (_syncStatus != value)
+            {
+                _syncStatus = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsSyncing));
+                OnPropertyChanged(nameof(CanRetrySync));
+            }
+        }
+    }
+
+    public bool IsSyncing => _syncStatus == SyncStatus.Syncing;
+
+    public bool CanRetrySync => _syncStatus == SyncStatus.Failed;
+
+    public DateTimeOffset? LastSuccessfulSyncAt
+    {
+        get => _lastSuccessfulSyncAt;
+        private set
+        {
+            if (_lastSuccessfulSyncAt != value)
+            {
+                _lastSuccessfulSyncAt = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public string? LastSyncError
+    {
+        get => _lastSyncError;
+        private set
+        {
+            if (_lastSyncError != value)
+            {
+                _lastSyncError = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public int LastSyncMatchedCount
+    {
+        get => _lastSyncMatchedCount;
+        private set
+        {
+            if (_lastSyncMatchedCount != value)
+            {
+                _lastSyncMatchedCount = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public int LastSyncIgnoredCount
+    {
+        get => _lastSyncIgnoredCount;
+        private set
+        {
+            if (_lastSyncIgnoredCount != value)
+            {
+                _lastSyncIgnoredCount = value;
                 OnPropertyChanged();
             }
         }
@@ -310,33 +487,113 @@ public sealed class HudViewModel : INotifyPropertyChanged
     public async Task SyncLivePricesAsync(HttpClient httpClient, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
+        if (_syncStatus == SyncStatus.Syncing)
+        {
+            return;
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(SyncTimeout);
+
         try
         {
+            SyncStatus = SyncStatus.Syncing;
+            LastSyncError = null;
             StatusText = "Syncing live prices from OpenRouter...";
+
             using var request = new HttpRequestMessage(HttpMethod.Get, "https://openrouter.ai/api/v1/models");
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiPriceWatch", "1.0"));
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiPriceWatch", "0.2"));
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-            using HttpResponseMessage response = await httpClient.SendAsync(request, ct);
+            using HttpResponseMessage response = await httpClient.SendAsync(request, timeoutCts.Token);
             response.EnsureSuccessStatusCode();
-            string json = await response.Content.ReadAsStringAsync(ct);
+            string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
 
-            IReadOnlyList<ModelPricingEntry> merged = OpenRouterPriceParser.MergeLivePrices(
-                _catalog.AllModels,
-                json,
-                out int updatedCount);
+            OpenRouterSyncResult result = OpenRouterPriceParser.MergeLivePricesDetailed(_catalog.AllModels, json);
+            if (!result.IsValidPayload)
+            {
+                if (DataOrigin == CatalogDataOrigin.LiveSynced)
+                {
+                    DataOrigin = CatalogDataOrigin.LastValid;
+                }
 
-            _catalog.MergeEntries(merged);
+                SyncStatus = SyncStatus.Failed;
+                LastSyncError = result.ErrorMessage ?? "Invalid OpenRouter response.";
+                LastSyncMatchedCount = 0;
+                LastSyncIgnoredCount = result.IgnoredCount;
+                StatusText = $"Live sync failed: {LastSyncError} • keeping {GetOriginLabel()}";
+                return;
+            }
+
+            _catalog.MergeEntries(result.Models);
+            DataOrigin = CatalogDataOrigin.LiveSynced;
+            SyncStatus = SyncStatus.Succeeded;
+            LastSuccessfulSyncAt = DateTimeOffset.Now;
+            LastSyncError = null;
+            LastSyncMatchedCount = result.UpdatedCount;
+            LastSyncIgnoredCount = result.IgnoredCount;
             RefreshVisibleModels();
-            StatusText = $"Live sync OK • {updatedCount} matched ({DateTime.Now:HH:mm})";
+            StatusText = $"Live sync OK • {result.UpdatedCount} matched, {result.IgnoredCount} ignored ({LastSuccessfulSyncAt.Value:HH:mm})";
         }
-        catch (Exception)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            var latestBuiltin = PricingCatalogService.LoadDefault();
-            _catalog.MergeEntries(latestBuiltin.AllModels);
-            RefreshVisibleModels();
-            StatusText = $"Synced latest catalog ({DateTime.Now:HH:mm})";
+            SyncStatus = SyncStatus.Failed;
+            LastSyncError = "Sync cancelled.";
+            StatusText = $"Live sync cancelled • keeping {GetOriginLabel()}";
         }
+        catch (OperationCanceledException)
+        {
+            if (DataOrigin == CatalogDataOrigin.LiveSynced)
+            {
+                DataOrigin = CatalogDataOrigin.LastValid;
+            }
+
+            SyncStatus = SyncStatus.Failed;
+            LastSyncError = "Request timed out.";
+            StatusText = $"Live sync failed (timeout) • keeping {GetOriginLabel()}";
+        }
+        catch (Exception ex)
+        {
+            if (DataOrigin == CatalogDataOrigin.LiveSynced)
+            {
+                DataOrigin = CatalogDataOrigin.LastValid;
+            }
+
+            SyncStatus = SyncStatus.Failed;
+            LastSyncError = ex.Message;
+            StatusText = $"Live sync failed ({ex.GetType().Name}) • keeping {GetOriginLabel()}";
+        }
+    }
+
+    private string GetOriginLabel() => DataOrigin switch
+    {
+        CatalogDataOrigin.LiveSynced => "live data",
+        CatalogDataOrigin.LastValid => $"last valid sync ({LastSuccessfulSyncAt?.ToString("HH:mm") ?? "prior"})",
+        _ => "bundled data"
+    };
+
+    private void SavePreferences()
+    {
+        _preferencesStore.Save(new UserPreferences
+        {
+            SchemaVersion = 2,
+            HiddenModelIds = _hiddenModelIds
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            BackgroundOpacity = _backgroundOpacity,
+            IsAlwaysOnTop = _isAlwaysOnTop,
+            SelectedProvider = _selectedProvider,
+            SelectedTier = _selectedTier,
+            SelectedSort = _selectedSort,
+            IsFastMode = _isFastMode,
+            SelectedPresetName = _selectedPreset.Name,
+            TaskInputTokens = _taskInputTokens,
+            TaskCachedTokens = _taskCachedTokens,
+            TaskOutputTokens = _taskOutputTokens,
+            HasDismissedOnboarding = _hasDismissedOnboarding,
+            HasShownTrayMinimizeNotice = _hasShownTrayMinimizeNotice,
+            StartWithWindows = _startWithWindows
+        });
     }
 
     private void NotifyHiddenChanged()
@@ -375,18 +632,21 @@ public sealed class HudViewModel : INotifyPropertyChanged
             .Where(e => !_hiddenModelIds.Contains(e.Id))
             .ToList();
 
-        decimal? minTaskCost = nonHiddenInView.Count > 0
-            ? nonHiddenInView.Min(e =>
-                TaskCostCalculator.CalculateCost(e, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode))
-            : null;
+        List<decimal> comparableCosts = nonHiddenInView
+            .Select(e => TaskCostCalculator.CalculateCostOrNull(e, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode))
+            .Where(c => c.HasValue)
+            .Select(c => c!.Value)
+            .ToList();
+
+        decimal? minTaskCost = comparableCosts.Count > 0 ? comparableCosts.Min() : null;
 
         bool cheapestAssigned = false;
         var rows = new List<ModelRowViewModel>(filtered.Count);
         foreach (ModelPricingEntry entry in filtered)
         {
             bool isHidden = _hiddenModelIds.Contains(entry.Id);
-            decimal cost = TaskCostCalculator.CalculateCost(entry, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode);
-            bool isCheapest = !isHidden && !cheapestAssigned && minTaskCost.HasValue && cost == minTaskCost.Value;
+            decimal? cost = TaskCostCalculator.CalculateCostOrNull(entry, _taskInputTokens, _taskCachedTokens, _taskOutputTokens, _isFastMode);
+            bool isCheapest = !isHidden && !cheapestAssigned && minTaskCost.HasValue && cost.HasValue && cost.Value == minTaskCost.Value;
             if (isCheapest)
             {
                 cheapestAssigned = true;
@@ -405,7 +665,8 @@ public sealed class HudViewModel : INotifyPropertyChanged
         VisibleModels = rows;
         string modeLabel = _isFastMode ? "FAST MODE" : "STD MODE";
         string hiddenSuffix = _hiddenModelIds.Count > 0 ? $" • {_hiddenModelIds.Count} hidden" : string.Empty;
-        StatusText = $"{rows.Count} models • {_selectedProvider} • {modeLabel}{hiddenSuffix}";
+        string syncSuffix = _syncStatus == SyncStatus.Failed ? " • Sync failed (offline/stale)" : string.Empty;
+        StatusText = $"{rows.Count} models • {_selectedProvider} • {modeLabel}{hiddenSuffix}{syncSuffix}";
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

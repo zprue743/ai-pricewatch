@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using AiPriceWatch.Core.Models;
 using AiPriceWatch.Core.Services;
 using AiPriceWatch.Core.ViewModels;
@@ -33,7 +35,8 @@ var noCacheModel = sampleFastModel with { CachedInputPerMillion = null, FastInpu
 // Task 1: Standard & Fast mode cost calculation
 AssertEqual(0.130m, TaskCostCalculator.CalculateCost(sampleFastModel, 100_000, 200_000, 50_000, useFastMode: false), "Standard cost math");
 AssertEqual(0.255m, TaskCostCalculator.CalculateCost(sampleFastModel, 100_000, 200_000, 50_000, useFastMode: true), "Fast mode cost math");
-AssertEqual(0.050m, TaskCostCalculator.CalculateCost(noCacheModel, 100_000, 100_000, 0, useFastMode: true), "Null cached & fast price fallback");
+AssertEqual((decimal?)null, TaskCostCalculator.CalculateCostOrNull(noCacheModel, 100_000, 100_000, 0, useFastMode: true), "Absent fast price returns null in Fast mode");
+AssertEqual("N/A", TaskCostCalculator.FormatCost((decimal?)null), "Null cost formats as N/A");
 AssertEqual(0m, TaskCostCalculator.CalculateCost(sampleFastModel, -5000, -1000, -2000), "Negative tokens clamped to 0");
 AssertEqual("$0.0000", TaskCostCalculator.FormatCost(0m), "Zero cost format");
 AssertEqual("<$0.0001", TaskCostCalculator.FormatCost(0.00004m), "Sub-basis-point cost format");
@@ -44,7 +47,7 @@ AssertEqual("$0.15", TaskCostCalculator.FormatPricePerMillion(0.15m), "Standard 
 AssertEqual("$0.075", TaskCostCalculator.FormatPricePerMillion(0.075m), "Sub-cent price per million format");
 AssertEqual("$2.00 / $10.00", TaskCostCalculator.FormatInOutPair(2.00m, 10.00m), "In/Out pair format");
 AssertEqual("59.1", TaskCostCalculator.FormatScore(59.1m), "Intelligence score format");
-AssertEqual("—", TaskCostCalculator.FormatScore(null), "Null score format");
+AssertEqual("N/A", TaskCostCalculator.FormatScore(null), "Null score format");
 AssertEqual("128K", TaskCostCalculator.FormatContextWindow(128_000), "Thousands context window");
 AssertEqual("1M", TaskCostCalculator.FormatContextWindow(1_000_000), "Millions context window");
 AssertEqual("2M", TaskCostCalculator.FormatContextWindow(2_000_000), "2M context window");
@@ -70,7 +73,10 @@ AssertTrue(ids.Contains("grok-4.7") && ids.Contains("grok-4.6") && ids.Contains(
 AssertTrue(ids.Contains("composer-2.5") && ids.Contains("composer-2"), "Contains Cursor Composer models");
 AssertTrue(ids.Contains("deepseek-v4-pro") && ids.Contains("deepseek-flash"), "Contains current DeepSeek V4 lineup");
 AssertTrue(catalog.AllModels.All(m => m.IntelligenceScore is > 0m), "Every catalog model includes a published Intelligence Score");
-AssertTrue(catalog.AllModels.All(m => m.FastInputPerMillion is > 0m && m.FastOutputPerMillion is > 0m), "Every catalog model includes Fast mode input/output pricing");
+var catalogValidation = CatalogValidator.Validate(catalog.AllModels, new DateTimeOffset(2026, 11, 14, 12, 0, 0, TimeSpan.Zero));
+AssertTrue(catalogValidation.IsValid, $"Embedded catalog passes CatalogValidator: {string.Join("; ", catalogValidation.Errors)}");
+AssertTrue(catalog.AllModels.Any(m => m.FastInputPerMillion is > 0m && m.FastOutputPerMillion is > 0m), "Catalog includes verified Fast mode pricing");
+AssertTrue(catalog.AllModels.Any(m => m.FastInputPerMillion is null && m.FastOutputPerMillion is null), "Catalog leaves unverified Fast mode pricing as null (N/A)");
 
 var sortedByScore = catalog.Query(sort: PricingSortField.ScoreDesc);
 AssertTrue((sortedByScore.First().IntelligenceScore ?? 0m) >= (sortedByScore.Last().IntelligenceScore ?? 0m), "Sorts descending by Intelligence Score");
@@ -186,4 +192,248 @@ finally
     }
 }
 
+// PW-01: Pricing & Benchmark Source Metadata
+string provenanceJson = """
+[
+  {
+    "id": "test-model-full",
+    "name": "Test Model Full",
+    "provider": "Anthropic",
+    "tier": "Balanced",
+    "inputPerMillion": 2.00,
+    "cachedInputPerMillion": 0.10,
+    "outputPerMillion": 10.00,
+    "fastInputPerMillion": 4.00,
+    "fastOutputPerMillion": 20.00,
+    "intelligenceScore": 54.5,
+    "contextTokens": 200000,
+    "notes": "Test full provenance",
+    "openRouterId": "anthropic/test-model-full",
+    "pricingSource": {
+      "sourceName": "Anthropic Pricing Docs",
+      "sourceUrl": "https://docs.anthropic.com/en/docs/about-claude/pricing",
+      "sourceType": "directProvider",
+      "lastVerifiedAt": "2026-11-14T00:00:00Z",
+      "status": "verified"
+    },
+    "benchmarkSource": {
+      "publisher": "Artificial Analysis",
+      "benchmarkName": "Intelligence Index",
+      "version": "v5",
+      "scoreDate": "2026-11-10T00:00:00Z",
+      "status": "verified"
+    }
+  },
+  {
+    "id": "test-model-partial",
+    "name": "Test Model Partial",
+    "provider": "OpenAI",
+    "tier": "Fast",
+    "inputPerMillion": 0.25,
+    "cachedInputPerMillion": null,
+    "outputPerMillion": 2.00,
+    "contextTokens": 128000,
+    "notes": "Missing fast, cache, and benchmark"
+  }
+]
+""";
+var provenanceCatalog = PricingCatalogService.FromJson(provenanceJson);
+AssertEqual(2, provenanceCatalog.AllModels.Count, "Parses catalog entries with full and partial provenance");
+
+var fullEntry = provenanceCatalog.AllModels[0];
+AssertEqual("anthropic/test-model-full", fullEntry.OpenRouterId, "Parses explicit OpenRouterId");
+AssertEqual(PriceSourceType.DirectProvider, fullEntry.EffectiveStandardProvenance.SourceType, "Parses directProvider source type");
+AssertEqual(DataVerificationStatus.Verified, fullEntry.EffectiveStandardProvenance.Status, "Parses verified pricing status");
+AssertEqual("Artificial Analysis", fullEntry.EffectiveBenchmarkProvenance.Publisher, "Parses benchmark publisher");
+
+var partialEntry = provenanceCatalog.AllModels[1];
+AssertEqual(PriceSourceType.Unknown, partialEntry.EffectiveStandardProvenance.SourceType, "Missing provenance defaults to Unknown");
+AssertEqual(DataVerificationStatus.Unavailable, partialEntry.EffectiveCachedProvenance.Status, "Null cached price defaults to Unavailable provenance");
+AssertEqual(DataVerificationStatus.Unavailable, partialEntry.EffectiveFastProvenance.Status, "Null fast price defaults to Unavailable provenance");
+AssertEqual(DataVerificationStatus.Unavailable, partialEntry.EffectiveBenchmarkProvenance.Status, "Null score defaults to Unavailable benchmark provenance");
+
+var fullRow = new ModelRowViewModel(fullEntry, 10_000, 0, 2_000, isCheapestInView: false);
+AssertEqual("Direct", fullRow.PricingSourceBadge, "Row badge reflects DirectProvider");
+AssertTrue(fullRow.BenchmarkTooltip.Contains("Artificial Analysis", StringComparison.Ordinal), "Benchmark tooltip includes publisher");
+AssertTrue(fullRow.RowDetailsTooltip.Contains("2026-11-14", StringComparison.Ordinal), "Row details tooltip includes verification date");
+
+var partialRow = new ModelRowViewModel(partialEntry, 10_000, 0, 2_000, isCheapestInView: false);
+AssertEqual("Unknown", partialRow.PricingSourceBadge, "Row badge reflects Unknown when provenance omitted");
+AssertEqual("N/A", partialRow.ScoreDisplay, "Row score displays N/A when missing");
+
+var malformedCatalog = PricingCatalogService.FromJson("{ invalid json [");
+AssertEqual(0, malformedCatalog.AllModels.Count, "Malformed JSON does not crash startup and returns empty catalog");
+
+// PW-02: Fast/Priority Pricing Semantics (Strict N/A, no 2x multiplier)
+var noFastEntry = new ModelPricingEntry(
+    "cheap-no-fast", "Cheap No Fast", "OpenAI", TaskTier.Fast,
+    InputPerMillion: 0.05m, CachedInputPerMillion: 0.01m, OutputPerMillion: 0.10m,
+    ContextTokens: 128000, Notes: "No fast mode");
+var verifiedFastEntry = new ModelPricingEntry(
+    "verified-fast", "Verified Fast", "Anthropic", TaskTier.Balanced,
+    InputPerMillion: 2.00m, CachedInputPerMillion: 0.10m, OutputPerMillion: 10.00m,
+    ContextTokens: 200000, Notes: "Has verified fast",
+    FastInputPerMillion: 4.00m, FastOutputPerMillion: 20.00m);
+
+var fastCatalog = new PricingCatalogService([noFastEntry, verifiedFastEntry]);
+var fastSorted = fastCatalog.Query(sort: PricingSortField.TotalTaskCostAsc, useFastMode: true);
+AssertEqual("verified-fast", fastSorted[0].Id, "Fast mode TotalTaskCostAsc ranks verified Fast model ahead of N/A model");
+AssertEqual("cheap-no-fast", fastSorted[1].Id, "Fast mode TotalTaskCostAsc pushes N/A Fast model to the end");
+
+var fastVm = new HudViewModel(fastCatalog, new UserPreferencesStore(Path.Combine(Path.GetTempPath(), $"aipw-pw02-{Guid.NewGuid():N}.json")));
+fastVm.IsFastMode = true;
+var noFastRow = fastVm.VisibleModels.First(m => m.Id == "cheap-no-fast");
+var verifiedFastRow = fastVm.VisibleModels.First(m => m.Id == "verified-fast");
+AssertEqual("N/A", noFastRow.FastInOutDisplay, "Absent Fast pricing displays N/A");
+AssertEqual("N/A", noFastRow.EstimatedTaskCostDisplay, "Absent Fast task cost displays N/A in Fast mode");
+AssertTrue(!noFastRow.IsCheapestInView, "Model with N/A Fast pricing is never marked cheapest in Fast mode");
+AssertTrue(verifiedFastRow.IsCheapestInView, "Verified Fast model is marked cheapest in Fast mode");
+
+// OpenRouterPriceParser must NOT derive 2x Fast pricing when updating standard rates
+var openRouterFastMerged = OpenRouterPriceParser.MergeLivePrices(
+    [noFastEntry, verifiedFastEntry],
+    """{ "data": [ { "id": "openai/cheap-no-fast", "pricing": { "prompt": "0.00000010", "completion": "0.00000020" } }, { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000300", "completion": "0.00001500" } } ] }""",
+    out int fastUpdatedCount);
+AssertEqual(2, fastUpdatedCount, "Updates standard prices for both models");
+AssertEqual((decimal?)null, openRouterFastMerged[0].FastInputPerMillion, "OpenRouter update does not manufacture FastInputPerMillion");
+AssertEqual((decimal?)null, openRouterFastMerged[0].FastOutputPerMillion, "OpenRouter update does not manufacture FastOutputPerMillion");
+AssertEqual(4.00m, openRouterFastMerged[1].FastInputPerMillion, "OpenRouter update preserves existing verified FastInputPerMillion without ratio scaling");
+
+// PW-03: Harden live synchronization and failure handling
+var badJsonResult = OpenRouterPriceParser.MergeLivePricesDetailed([verifiedFastEntry], "{ not valid json");
+AssertTrue(!badJsonResult.IsValidPayload, "Bad JSON is flagged as invalid payload");
+AssertEqual(0, badJsonResult.UpdatedCount, "Bad JSON updates 0 models");
+
+string duplicateAndInvalidPayload = """
+{
+  "data": [
+    { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000300", "completion": "0.00001500" } },
+    { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000900", "completion": "0.00009000" } },
+    { "id": "vendor-a/shared-name", "pricing": { "prompt": "0.00000100", "completion": "0.00000200" } },
+    { "id": "vendor-b/shared-name", "pricing": { "prompt": "0.00000500", "completion": "0.00000600" } },
+    { "id": "openai/bad-price", "pricing": { "prompt": "-0.001", "completion": "0.001" } },
+    { "id": "openai/huge-price", "pricing": { "prompt": "999.0", "completion": "1.0" } }
+  ]
+}
+""";
+var sharedNameEntry = new ModelPricingEntry(
+    "shared-name", "Shared Name", "Other", TaskTier.Fast,
+    InputPerMillion: 0.99m, CachedInputPerMillion: null, OutputPerMillion: 0.99m,
+    ContextTokens: 128000, Notes: "Ambiguous short ID");
+var dupResult = OpenRouterPriceParser.MergeLivePricesDetailed([verifiedFastEntry, sharedNameEntry], duplicateAndInvalidPayload);
+AssertTrue(dupResult.IsValidPayload, "Partial valid payload succeeds");
+AssertEqual(1, dupResult.UpdatedCount, "Only unambiguous valid entry is updated");
+AssertEqual(1, dupResult.DuplicateCount, "Duplicate ID is counted and ignored");
+AssertEqual(3, dupResult.IgnoredCount, "Duplicate + negative + absurdly large entries are counted as ignored");
+AssertEqual(3.00m, dupResult.Models[0].InputPerMillion, "First valid entry wins over duplicate");
+AssertEqual(0.99m, dupResult.Models[1].InputPerMillion, "Ambiguous short ID across providers is not merged");
+
+// Offline / failing HTTP handler keeps prior valid data and marks SyncStatus.Failed
+var syncVm = new HudViewModel(
+    new PricingCatalogService([verifiedFastEntry]),
+    new UserPreferencesStore(Path.Combine(Path.GetTempPath(), $"aipw-pw03-{Guid.NewGuid():N}.json")));
+
+var okHandler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+{
+    Content = new StringContent("""{ "data": [ { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000250", "completion": "0.00001250" } } ] }""", Encoding.UTF8, "application/json")
+});
+using (var okClient = new HttpClient(okHandler))
+{
+    await syncVm.SyncLivePricesAsync(okClient);
+}
+AssertEqual(SyncStatus.Succeeded, syncVm.SyncStatus, "Successful sync sets SyncStatus.Succeeded");
+AssertEqual(CatalogDataOrigin.LiveSynced, syncVm.DataOrigin, "Successful sync sets CatalogDataOrigin.LiveSynced");
+AssertTrue(syncVm.LastSuccessfulSyncAt.HasValue, "Records LastSuccessfulSyncAt");
+AssertEqual(2.50m, syncVm.VisibleModels[0].StandardProvenance.Status == DataVerificationStatus.Verified ? 2.50m : 0m, "Live sync updates price");
+
+var failHandler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Network unreachable"));
+using (var failClient = new HttpClient(failHandler))
+{
+    await syncVm.SyncLivePricesAsync(failClient);
+}
+AssertEqual(SyncStatus.Failed, syncVm.SyncStatus, "Offline sync sets SyncStatus.Failed");
+AssertEqual(CatalogDataOrigin.LastValid, syncVm.DataOrigin, "Failed sync after live sync preserves LastValid origin");
+AssertTrue(syncVm.CanRetrySync, "CanRetrySync is true after failure");
+AssertTrue(syncVm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase), "StatusText honestly reports sync failure");
+AssertEqual("$2.50 / $12.50", syncVm.VisibleModels[0].StandardInOutDisplay, "Failed sync retains prior live-synced prices instead of overwriting with bundled data");
+
+// PW-04: CatalogValidator detects duplicates, missing provenance, and impossible values
+var invalidCatalog = new[]
+{
+    new ModelPricingEntry("dup-id", "Model A", "OpenAI", TaskTier.Fast, -1m, null, 2m, 0, "Bad entry"),
+    new ModelPricingEntry("dup-id", "Model B", "OpenAI", TaskTier.Fast, 1m, null, 2m, 128000, "Duplicate")
+};
+var invalidValidation = CatalogValidator.Validate(invalidCatalog);
+AssertTrue(!invalidValidation.IsValid, "CatalogValidator rejects invalid and duplicate entries");
+AssertTrue(invalidValidation.Errors.Any(e => e.Contains("Duplicate model Id", StringComparison.Ordinal)), "CatalogValidator reports duplicate ID");
+AssertTrue(invalidValidation.Errors.Any(e => e.Contains("negative standard pricing", StringComparison.Ordinal)), "CatalogValidator reports negative pricing");
+AssertTrue(invalidValidation.Errors.Any(e => e.Contains("missing standard pricing provenance", StringComparison.Ordinal)), "CatalogValidator reports missing provenance");
+
+// PW-05: Defensible task cost boundary conditions (zero tokens, large values, ties)
+AssertEqual((decimal?)0m, TaskCostCalculator.CalculateCostOrNull(sampleFastModel, 0, 0, 0, useFastMode: false), "Zero tokens yields $0.0000");
+decimal? largeCost = TaskCostCalculator.CalculateCostOrNull(sampleFastModel, int.MaxValue, int.MaxValue, int.MaxValue, useFastMode: true);
+AssertTrue(largeCost.HasValue && largeCost.Value > 0m, "Large token counts (int.MaxValue) compute safely without overflow");
+
+var tieA = new ModelPricingEntry("tie-a", "Tie A", "OpenAI", TaskTier.Fast, 1.00m, null, 2.00m, 128000, "Tie A", IntelligenceScore: 40m);
+var tieB = new ModelPricingEntry("tie-b", "Tie B", "Anthropic", TaskTier.Fast, 1.00m, null, 2.00m, 128000, "Tie B", IntelligenceScore: 50m);
+var tieCatalog = new PricingCatalogService([tieA, tieB]);
+var tieRanked = tieCatalog.Query(sort: PricingSortField.TotalTaskCostAsc);
+AssertEqual("tie-b", tieRanked[0].Id, "Cost tie-breaker deterministically prefers higher IntelligenceScore");
+
+// PW-11: UserPreferencesStore v0.1->v0.2 migration, persistence, and corrupt fallback
+string v1PrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-pw11-v1-{Guid.NewGuid():N}.json");
+string corruptPrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-pw11-corrupt-{Guid.NewGuid():N}.json");
+try
+{
+    File.WriteAllText(v1PrefsPath, """{ "HiddenModelIds": ["gpt-5-mini", "composer-2"] }""");
+    var v1Store = new UserPreferencesStore(v1PrefsPath);
+    var v1Vm = new HudViewModel(PricingCatalogService.LoadDefault(), v1Store);
+    AssertEqual(2, v1Vm.HiddenCount, "v0.1 preferences preserve HiddenModelIds");
+    AssertEqual(0.86, v1Vm.BackgroundOpacity, "v0.1 migration applies default opacity");
+    AssertEqual(false, v1Vm.StartWithWindows, "StartWithWindows defaults to false");
+
+    // Mutate settings and verify persistence across restart
+    v1Vm.SelectedProvider = "Anthropic";
+    v1Vm.SelectedTier = TaskTier.Balanced;
+    v1Vm.SelectedSort = PricingSortField.TotalTaskCostAsc;
+    v1Vm.IsFastMode = true;
+    v1Vm.BackgroundOpacity = 0.72;
+    v1Vm.IsAlwaysOnTop = false;
+    v1Vm.TaskInputTokens = 12_345;
+    v1Vm.HasDismissedOnboarding = true;
+    v1Vm.HasShownTrayMinimizeNotice = true;
+    v1Vm.StartWithWindows = true;
+
+    var v2Vm = new HudViewModel(PricingCatalogService.LoadDefault(), v1Store);
+    AssertEqual(2, v2Vm.HiddenCount, "Reloaded v2 preserves HiddenModelIds");
+    AssertEqual("Anthropic", v2Vm.SelectedProvider, "Persists SelectedProvider");
+    AssertEqual((TaskTier?)TaskTier.Balanced, v2Vm.SelectedTier, "Persists SelectedTier");
+    AssertEqual(PricingSortField.TotalTaskCostAsc, v2Vm.SelectedSort, "Persists SelectedSort");
+    AssertEqual(true, v2Vm.IsFastMode, "Persists IsFastMode");
+    AssertEqual(0.72, v2Vm.BackgroundOpacity, "Persists BackgroundOpacity");
+    AssertEqual(false, v2Vm.IsAlwaysOnTop, "Persists IsAlwaysOnTop");
+    AssertEqual(12_345, v2Vm.TaskInputTokens, "Persists TaskInputTokens");
+    AssertEqual(true, v2Vm.HasDismissedOnboarding, "Persists HasDismissedOnboarding");
+    AssertEqual(true, v2Vm.HasShownTrayMinimizeNotice, "Persists HasShownTrayMinimizeNotice");
+    AssertEqual(true, v2Vm.StartWithWindows, "Persists StartWithWindows");
+
+    File.WriteAllText(corruptPrefsPath, "{ broken json !!!");
+    var corruptStore = new UserPreferencesStore(corruptPrefsPath);
+    var corruptPrefs = corruptStore.Load();
+    AssertEqual(0.86, corruptPrefs.BackgroundOpacity, "Corrupt preferences file falls back to safe defaults");
+}
+finally
+{
+    if (File.Exists(v1PrefsPath)) File.Delete(v1PrefsPath);
+    if (File.Exists(corruptPrefsPath)) File.Delete(corruptPrefsPath);
+}
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
+
+sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(responder(request));
+    }
+}

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,13 +16,15 @@ public partial class MainWindow : Window
 {
     private static readonly HttpClient SharedHttpClient = new()
     {
-        Timeout = TimeSpan.FromSeconds(10)
+        Timeout = TimeSpan.FromSeconds(15)
     };
 
     private readonly HudViewModel _viewModel;
     private readonly AppUpdateService _updateService = new();
     private GlobalHotkeyService? _hotkeyService;
+    private TrayIconService? _trayService;
     private UpdateInfo? _pendingUpdate;
+    private bool _isExplicitExit;
 
     public MainWindow()
     {
@@ -29,13 +32,94 @@ public partial class MainWindow : Window
 
         _viewModel = new HudViewModel(PricingCatalogService.LoadDefault());
         DataContext = _viewModel;
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
 
         BuildProviderTabs();
         UpdateHudBackgroundAlpha(_viewModel.BackgroundOpacity);
+        SyncHeaderToggleVisuals();
+        UpdateOnboardingAndEmptyState();
+
+        if (_updateService.IsStoreManaged)
+        {
+            SettingsCheckUpdateButton.Content = "Updates managed by Microsoft Store";
+            SettingsCheckUpdateButton.IsEnabled = false;
+        }
+
+        _trayService = new TrayIconService(
+            onToggleVisibility: () => Dispatcher.Invoke(ToggleOverlayVisibility),
+            onOpenSettings: () => Dispatcher.Invoke(OpenSettingsFromTray),
+            onCheckForUpdates: () => Dispatcher.Invoke(() => _ = CheckUpdatesManualAsync()),
+            onExit: () => Dispatcher.Invoke(ExitApplication),
+            updatesSupported: !_updateService.IsStoreManaged);
 
         SourceInitialized += OnSourceInitialized;
         Loaded += OnWindowLoaded;
         Closed += OnWindowClosed;
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(HudViewModel.VisibleModels) or nameof(HudViewModel.HasDismissedOnboarding))
+        {
+            UpdateOnboardingAndEmptyState();
+        }
+    }
+
+    private void UpdateOnboardingAndEmptyState()
+    {
+        FirstRunBanner.Visibility = _viewModel.HasDismissedOnboarding ? Visibility.Collapsed : Visibility.Visible;
+        EmptyStatePanel.Visibility = _viewModel.VisibleModels.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SyncHeaderToggleVisuals()
+    {
+        FastModeButton.Content = _viewModel.IsFastMode ? "⚡ FAST: ON" : "⚡ FAST: OFF";
+        FastModeButton.Foreground = new SolidColorBrush(_viewModel.IsFastMode
+            ? Color.FromRgb(0xFF, 0xA6, 0x57)
+            : Color.FromRgb(0x8B, 0x94, 0x9E));
+        FastModeButton.BorderBrush = new SolidColorBrush(_viewModel.IsFastMode
+            ? Color.FromRgb(0xFF, 0xA6, 0x57)
+            : Color.FromRgb(0x30, 0x36, 0x3D));
+
+        PinButton.Content = _viewModel.IsAlwaysOnTop ? "PIN: ON" : "PIN: OFF";
+        PinButton.Foreground = new SolidColorBrush(_viewModel.IsAlwaysOnTop
+            ? Color.FromRgb(0x58, 0xA6, 0xFF)
+            : Color.FromRgb(0x8B, 0x94, 0x9E));
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (!_isExplicitExit)
+        {
+            e.Cancel = true;
+            Hide();
+            if (!_viewModel.HasShownTrayMinimizeNotice)
+            {
+                _trayService?.ShowOneTimeMinimizeNotice();
+                _viewModel.HasShownTrayMinimizeNotice = true;
+            }
+            return;
+        }
+
+        base.OnClosing(e);
+    }
+
+    private void ExitApplication()
+    {
+        _isExplicitExit = true;
+        _trayService?.Dispose();
+        _trayService = null;
+        _hotkeyService?.Dispose();
+        _hotkeyService = null;
+        System.Windows.Application.Current.Shutdown();
+    }
+
+    private void OpenSettingsFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+        SettingsPanel.Visibility = Visibility.Visible;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -46,7 +130,10 @@ public partial class MainWindow : Window
 
     private void OnWindowClosed(object? sender, EventArgs e)
     {
+        _trayService?.Dispose();
+        _trayService = null;
         _hotkeyService?.Dispose();
+        _hotkeyService = null;
     }
 
     private void ToggleOverlayVisibility()
@@ -276,7 +363,99 @@ public partial class MainWindow : Window
         Close();
     }
 
-    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void CloseSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void DismissOnboardingButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.HasDismissedOnboarding = true;
+    }
+
+    private void ShowOnboardingButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.HasDismissedOnboarding = false;
+        SettingsPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void ResetFiltersButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SelectedProvider = "All";
+        _viewModel.SelectedTier = null;
+        _viewModel.SearchText = string.Empty;
+        _viewModel.ShowHiddenModels = false;
+        BuildProviderTabs();
+    }
+
+    private void StartWithWindowsCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        bool enabled = StartWithWindowsCheckBox.IsChecked == true;
+        bool applied = StartupService.ApplyStartWithWindows(enabled, out string? note);
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            StartupNoteText.Text = note;
+            StartupNoteText.Visibility = Visibility.Visible;
+        }
+        else if (applied)
+        {
+            StartupNoteText.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async void SettingsCheckUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        await CheckUpdatesManualAsync();
+    }
+
+    private async Task CheckUpdatesManualAsync()
+    {
+        if (_updateService.IsStoreManaged)
+        {
+            return;
+        }
+
+        SettingsCheckUpdateButton.IsEnabled = false;
+        SettingsCheckUpdateButton.Content = "Checking...";
+        try
+        {
+            _pendingUpdate = await _updateService.CheckForUpdatesAsync();
+            if (_pendingUpdate is not null)
+            {
+                UpdateButton.Content = $"UPDATE v{_pendingUpdate.TargetFullRelease.Version}";
+                UpdateButton.Visibility = Visibility.Visible;
+                SettingsCheckUpdateButton.Content = $"Update available: v{_pendingUpdate.TargetFullRelease.Version}";
+            }
+            else
+            {
+                SettingsCheckUpdateButton.Content = _updateService.IsInstalled
+                    ? "Up to date"
+                    : "Portable/dev build (no auto-update)";
+            }
+        }
+        catch
+        {
+            SettingsCheckUpdateButton.Content = "Update check failed (retry)";
+        }
+        finally
+        {
+            SettingsCheckUpdateButton.IsEnabled = true;
+        }
+    }
+
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
         {
@@ -319,6 +498,13 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Escape)
         {
+            if (SettingsPanel.Visibility == Visibility.Visible)
+            {
+                SettingsPanel.Visibility = Visibility.Collapsed;
+                e.Handled = true;
+                return;
+            }
+
             if (!string.IsNullOrEmpty(_viewModel.SearchText))
             {
                 _viewModel.SearchText = string.Empty;

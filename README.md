@@ -2,29 +2,48 @@
 
 <img width="880" height="503" alt="image" src="https://github.com/user-attachments/assets/eff5ff80-b56a-4bd6-bfb8-d62243402d94" />
 
+A lightweight, transparent desktop HUD overlay for Windows 10/11 that lets you compare AI model token pricing (`$/1M` in **Standard** and **Fast / Priority** modes), inspect **Artificial Analysis Intelligence Index (AAII)** benchmark scores with source attribution, filter by task tier, and calculate deterministic workload costs at a glance.
 
-A lightweight, transparent desktop HUD overlay for Windows that lets you select an AI provider, compare model token pricing (`$/1M` in both **Standard** and **Fast / Priority** modes), inspect published **Artificial Analysis Intelligence Index (AAII)** benchmark scores, filter by task tier, and calculate exact workload costs at a glance.
+## Install (Windows 10 / 11 x64)
 
-## Install (Windows 10 / 11)
+No separate `.NET` runtime installation is required.
 
-No Git, GitHub navigation, or separate `.NET` runtime installation is required.
+### Option 1: Microsoft Store (MSIX — Recommended)
+- Installed, signed, and automatically updated by Microsoft Store.
+- Velopack in-app updates are automatically disabled on Store-managed installs.
 
-1. Open the **[AI PriceWatch Download Page](https://zprue743.github.io/ai-pricewatch/)** (or download **[AiPriceWatch-win-Setup.exe](https://github.com/zprue743/ai-pricewatch/releases/latest/download/AiPriceWatch-win-Setup.exe)** directly).
-2. Double-click **`AiPriceWatch-win-Setup.exe`** to install and launch the app (creates Start Menu & Desktop shortcuts automatically).
-   - *If Windows SmartScreen shows **"Windows protected your PC"**, click **More info** → **Run anyway**.*
-3. Press **`Ctrl+Shift+Space`** anytime to show or hide the HUD.
-4. **Updating:** When a new version is released, an **`UPDATE`** button appears in the top bar—click it to update and restart directly from inside the app.
+### Option 2: WinGet (Developer CLI)
+```powershell
+winget install zprue743.AiPriceWatch
+```
+- Uses the GitHub-hosted Velopack installer (**unsigned**) with in-app Velopack updates.
 
-## Features
+### Option 3: GitHub Releases (Velopack Installer)
+1. Download **[AiPriceWatch-win-Setup.exe](https://github.com/zprue743/ai-pricewatch/releases/latest/download/AiPriceWatch-win-Setup.exe)** from [GitHub Releases](https://github.com/zprue743/ai-pricewatch/releases) or the **[Download Page](https://zprue743.github.io/ai-pricewatch/)**.
+2. Verify the download's integrity and build provenance (recommended, as the GitHub EXE is **unsigned**):
+   ```powershell
+   Get-FileHash .\AiPriceWatch-win-Setup.exe -Algorithm SHA256
+   gh attestation verify .\AiPriceWatch-win-Setup.exe --repo zprue743/ai-pricewatch
+   ```
+3. Run `AiPriceWatch-win-Setup.exe` to install and launch.
+4. **Updating:** Velopack installs check GitHub Releases for updates and surface an **`UPDATE`** button in the top bar (and in the tray menu).
 
-- **Translucent Terminal HUD (`860×510` default, resizable):** Frameless dark overlay with an independent background opacity slider (`35%–100%`) that keeps text 100% crisp while letting you see your active windows behind it.
-- **Provider Selector Tabs (`Alt+1..7`):** Instant switching across **All**, **Anthropic**, **Google Gemini**, **OpenAI**, **Cursor**, **xAI**, and **DeepSeek**.
-- **Standard vs. Fast Mode Pricing (`⚡ FAST: OFF / ON`):** Every model row displays both `STD (IN / OUT)` and `⚡ FAST (IN / OUT)` per-million token rates side-by-side. Toggle `⚡ FAST` (`Ctrl+M`) to switch the live task cost calculator and price sorting between Standard and Fast/Priority rates.
-- **Published Benchmark Scores (`AAII SCORE`):** Includes each model's **Artificial Analysis Intelligence Index (v5)** composite score badge and supports sorting by score descending.
-- **Task Tier Guidance & `BEST VALUE` Highlighting:** Models are categorized into `FAST / BUDGET`, `BALANCED`, and `REASONING`, and the most cost-effective model in the current view is automatically badged with `BEST VALUE`.
-- **Interactive Task Cost Estimator:** Choose a workload preset (*Quick Prompt*, *Code Feature*, *Cached Agent Loop*, *Repo Audit*) or type custom `IN`, `CACHE`, and `OUT` token counts to see exact per-task dollar estimates for every model.
-- **Offline-First + Live OpenRouter Sync:** Works immediately offline using the curated catalog, with a one-click **SYNC LIVE** button to pull updated per-token pricing from OpenRouter's public API.
-- **Global Hotkey (`Ctrl+Shift+Space`):** Summon or hide the HUD from anywhere on your desktop.
+See [docs/security-verification.md](docs/security-verification.md) for full details on Microsoft Defender scanning, SHA-256 checksums, GitHub Artifact Attestations, and VirusTotal verification.
+
+## Features & Pricing Methodology
+
+- **Transparent Provenance & Freshness:** Every pricing field and benchmark score carries source metadata (`Direct`, `OpenRouter`, `Estimated`, or `Unknown`) and a verification date (visible on hover).
+- **Strict `N/A` Fast/Priority Semantics:** Fast/Priority API rates are displayed **only** when verified from an official provider source. Unsupported Fast/Priority rates strictly display `N/A` (never manufactured via arbitrary multipliers) and are excluded from Fast-mode cost calculations and rankings.
+- **`LOWEST EST. COST` Highlighting:** Highlights the lowest-cost visible model with verified pricing for the active mode and token assumptions. Models with `N/A` rates are excluded.
+- **System Tray Resident Lifecycle:** Clicking `✕` hides the HUD to the Windows system tray (with a one-time notification). Use the tray menu for **Show / Hide HUD**, **Settings & Help**, **Check for Updates**, and **Exit** (which terminates the process and releases `Ctrl+Shift+Space`).
+- **Persistent Preferences & Optional Startup:** Opacity, pin state, provider, tier, sort, Fast mode, workload tokens, hidden models, and `Start with Windows` (disabled by default) persist across restarts and `v0.1 -> v0.2` upgrades in `%LOCALAPPDATA%\AiPriceWatch\user-preferences.json`.
+- **Offline-First + Honest Live Sync:** Works offline using the bundled catalog. Clicking **SYNC LIVE** fetches standard rates from OpenRouter (`https://openrouter.ai/api/v1/models`). If offline or an error occurs, prior valid data is preserved and a visible failed-sync status with **Retry Sync** is shown.
+
+## Privacy & Network Behavior
+
+AI PriceWatch runs locally with no telemetry, no user accounts, and no background cloud sync:
+- **OpenRouter (`https://openrouter.ai/api/v1/models`):** Contacted **only** when you click **SYNC LIVE** (or **Retry Sync**).
+- **GitHub Releases:** Contacted on startup / manual update check for Velopack EXE installs only (disabled on Microsoft Store MSIX installs).
 
 ## Keyboard Shortcuts
 
@@ -34,11 +53,18 @@ No Git, GitHub navigation, or separate `.NET` runtime installation is required.
 | `Alt+1` .. `Alt+7` | Switch provider tab (`All`, `Anthropic`, `Google Gemini`, `OpenAI`, `Cursor`, `xAI`, `DeepSeek`) |
 | `Ctrl+M` | Toggle `⚡ FAST` mode pricing on/off |
 | `Ctrl+F` | Focus the search bar |
-| `Esc` | Clear active search query |
+| `Esc` | Close Settings or clear active search query |
+
+## Troubleshooting & Reporting Defects
+
+- **Cannot find window after closing:** Click the AI PriceWatch icon in the Windows system tray or press `Ctrl+Shift+Space`.
+- **Live sync fails:** Check your internet connection and click **Retry Sync** in the bottom status bar; the HUD continues working with your last valid or bundled catalog.
+- **Corrupt preferences:** Delete `%LOCALAPPDATA%\AiPriceWatch\user-preferences.json` and restart; defaults are restored automatically.
+- **Report a bug:** Open an issue at [github.com/zprue743/ai-pricewatch/issues](https://github.com/zprue743/ai-pricewatch/issues) with your OS version, install channel (Store MSIX / WinGet / Velopack EXE), and app version.
 
 ## Build, Run & Test (Developers)
 
-Requires the **.NET 10 SDK (`net10.0-windows`)**. Uses [Velopack](https://velopack.io/) for Windows installer packaging and in-app updates.
+Requires the **.NET 10 SDK (`net10.0-windows`)**.
 
 ```powershell
 # Build the entire solution
@@ -47,6 +73,8 @@ dotnet build AiPriceWatch.sln -c Release -m:1
 # Launch the desktop overlay HUD
 dotnet run --project src/AiPriceWatch.App
 
-# Run the unit test suite
-dotnet run --project tests/AiPriceWatch.Tests
+# Run unit & catalog validation tests
+dotnet run --project tests/AiPriceWatch.Tests -c Release
 ```
+
+See [docs/smoke-test-checklist.md](docs/smoke-test-checklist.md) for the Windows install/upgrade QA checklist.

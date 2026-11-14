@@ -10,11 +10,13 @@ public sealed class AppUpdateService
     private readonly UpdateManager _updateManager = new(
         new GithubSource(RepoUrl, accessToken: null, prerelease: false));
 
-    public bool IsInstalled => _updateManager.IsInstalled;
+    public bool IsStoreManaged => AppEnvironment.IsPackagedStoreApp();
+
+    public bool IsInstalled => !IsStoreManaged && _updateManager.IsInstalled;
 
     public async Task<UpdateInfo?> CheckForUpdatesAsync()
     {
-        if (!_updateManager.IsInstalled)
+        if (!IsInstalled)
         {
             return null;
         }

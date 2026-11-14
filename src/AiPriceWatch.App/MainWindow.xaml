@@ -111,6 +111,7 @@
                                 Background="#1F242C"
                                 BorderBrush="#30363D"
                                 Cursor="Hand"
+                                AutomationProperties.Name="Toggle Fast or Priority Mode"
                                 ToolTip="Toggle Fast / Priority Mode pricing for task cost estimates (Ctrl+M)" />
 
                         <Button x:Name="PinButton"
@@ -124,6 +125,7 @@
                                 Background="#1F242C"
                                 BorderBrush="#30363D"
                                 Cursor="Hand"
+                                AutomationProperties.Name="Toggle Always on Top"
                                 ToolTip="Toggle Always-on-Top window pin" />
 
                         <Button x:Name="SyncButton"
@@ -137,7 +139,22 @@
                                 Background="#1F242C"
                                 BorderBrush="#30363D"
                                 Cursor="Hand"
+                                AutomationProperties.Name="Sync live prices from OpenRouter"
                                 ToolTip="Fetch live model token prices from OpenRouter" />
+
+                        <Button x:Name="SettingsButton"
+                                Content="⚙"
+                                Click="SettingsButton_Click"
+                                Width="26"
+                                Height="22"
+                                Margin="0,0,6,0"
+                                FontSize="11"
+                                Foreground="#8B949E"
+                                Background="#1F242C"
+                                BorderBrush="#30363D"
+                                Cursor="Hand"
+                                AutomationProperties.Name="Open Settings and Help"
+                                ToolTip="Settings, Startup, &amp; Quick Guide" />
 
                         <Button x:Name="UpdateButton"
                                 Content="UPDATE"
@@ -151,6 +168,7 @@
                                 Background="#1F242C"
                                 BorderBrush="#30363D"
                                 Cursor="Hand"
+                                AutomationProperties.Name="Install application update"
                                 ToolTip="Download and install the latest version" />
 
                         <Button Content="—"
@@ -163,6 +181,7 @@
                                 Background="Transparent"
                                 BorderBrush="Transparent"
                                 Cursor="Hand"
+                                AutomationProperties.Name="Minimize HUD"
                                 ToolTip="Minimize HUD (or press Ctrl+Shift+Space to toggle)" />
 
                         <Button Content="✕"
@@ -174,7 +193,8 @@
                                 Background="Transparent"
                                 BorderBrush="Transparent"
                                 Cursor="Hand"
-                                ToolTip="Close AI PriceWatch" />
+                                AutomationProperties.Name="Hide HUD to system tray"
+                                ToolTip="Hide to system tray (Ctrl+Shift+Space or tray icon to reopen)" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -360,7 +380,7 @@
                                     BorderBrush="#2230363D"
                                     BorderThickness="1"
                                     Opacity="{Binding RowOpacity}"
-                                    ToolTip="{Binding Notes}">
+                                    ToolTip="{Binding RowDetailsTooltip}">
                                 <Grid VerticalAlignment="Center">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="2.1*" />
@@ -387,8 +407,9 @@
                                                     Padding="4,0"
                                                     Margin="6,0,0,0"
                                                     VerticalAlignment="Center"
+                                                    ToolTip="Lowest estimated task cost among visible models with verified pricing for the current mode and token assumptions."
                                                     Visibility="{Binding IsCheapestInView, Converter={StaticResource BoolToVis}}">
-                                                <TextBlock Text="BEST VALUE"
+                                                <TextBlock Text="LOWEST EST. COST"
                                                            Foreground="#3FB950"
                                                            FontSize="8.5"
                                                            FontWeight="Bold" />
@@ -418,6 +439,12 @@
                                                        Foreground="#8B949E"
                                                        FontSize="9.5"
                                                        FontWeight="SemiBold" />
+                                            <TextBlock Text=" • "
+                                                       Foreground="#484F58"
+                                                       FontSize="10" />
+                                            <TextBlock Text="{Binding PricingSourceBadge}"
+                                                       Foreground="#6E7681"
+                                                       FontSize="9.5" />
                                         </StackPanel>
                                     </StackPanel>
 
@@ -430,7 +457,7 @@
                                             Background="#1FD2A8FF"
                                             BorderBrush="#55D2A8FF"
                                             BorderThickness="1"
-                                            ToolTip="Artificial Analysis Intelligence Index v5 Score">
+                                            ToolTip="{Binding BenchmarkTooltip}">
                                         <TextBlock Text="{Binding ScoreDisplay}"
                                                    Foreground="#D2A8FF"
                                                    FontSize="11"
@@ -440,6 +467,7 @@
                                     <!-- Standard Mode Input / Output $/1M -->
                                     <TextBlock Grid.Column="2"
                                                Text="{Binding StandardInOutDisplay}"
+                                               ToolTip="{Binding StandardPricingTooltip}"
                                                Foreground="#E6EDF3"
                                                FontSize="11.5"
                                                VerticalAlignment="Center"
@@ -448,6 +476,7 @@
                                     <!-- Fast / Priority Mode Input / Output $/1M -->
                                     <TextBlock Grid.Column="3"
                                                Text="{Binding FastInOutDisplay}"
+                                               ToolTip="{Binding FastPricingTooltip}"
                                                Foreground="#FFA657"
                                                FontSize="11.5"
                                                VerticalAlignment="Center"
@@ -456,6 +485,7 @@
                                     <!-- Cached Input $/1M -->
                                     <TextBlock Grid.Column="4"
                                                Text="{Binding CachedPriceDisplay}"
+                                               ToolTip="{Binding CachedPricingTooltip}"
                                                Foreground="#79C0FF"
                                                FontSize="11.5"
                                                VerticalAlignment="Center"
@@ -499,6 +529,199 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+
+            <!-- PW-12: Non-modal First-Run Onboarding Banner (Row 3 top) -->
+            <Border x:Name="FirstRunBanner"
+                    Grid.Row="3"
+                    VerticalAlignment="Top"
+                    Margin="10,6,10,0"
+                    Padding="10,8"
+                    CornerRadius="6"
+                    Background="#F0161B22"
+                    BorderBrush="#58A6FF"
+                    BorderThickness="1"
+                    Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Welcome to AI PriceWatch — Quick Guide"
+                                   Foreground="#58A6FF"
+                                   FontWeight="Bold"
+                                   FontSize="11" />
+                        <TextBlock Text="• Press Ctrl+Shift+Space anytime to show/hide this HUD. Closing (✕) hides it to the system tray."
+                                   Foreground="#C9D1D9"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,3,0,0" />
+                        <TextBlock Text="• Works offline with the bundled catalog. Click SYNC LIVE for OpenRouter standard rates; N/A means no verified Fast/Benchmark data."
+                                   Foreground="#8B949E"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <Button Content="Settings"
+                                Click="SettingsButton_Click"
+                                Padding="8,3"
+                                Margin="0,0,6,0"
+                                FontSize="10"
+                                Foreground="#E6EDF3"
+                                Background="#1F242C"
+                                BorderBrush="#30363D"
+                                Cursor="Hand"
+                                AutomationProperties.Name="Open Settings from Quick Guide" />
+                        <Button Content="Got it"
+                                Click="DismissOnboardingButton_Click"
+                                Padding="8,3"
+                                FontSize="10"
+                                FontWeight="Bold"
+                                Foreground="#F0F6FC"
+                                Background="#1F6FEB"
+                                BorderBrush="#58A6FF"
+                                Cursor="Hand"
+                                AutomationProperties.Name="Dismiss Quick Guide" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- PW-13: Empty Filter State (Row 3 center) -->
+            <StackPanel x:Name="EmptyStatePanel"
+                        Grid.Row="3"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Visibility="Collapsed">
+                <TextBlock Text="No models match the current filters."
+                           Foreground="#C9D1D9"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="Try clearing the search box, switching provider to All, or unhiding models."
+                           Foreground="#8B949E"
+                           FontSize="11"
+                           Margin="0,4,0,10"
+                           HorizontalAlignment="Center" />
+                <Button Content="Reset Filters"
+                        Click="ResetFiltersButton_Click"
+                        Padding="12,5"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        Foreground="#F0F6FC"
+                        Background="#1F6FEB"
+                        BorderBrush="#58A6FF"
+                        Cursor="Hand"
+                        HorizontalAlignment="Center"
+                        AutomationProperties.Name="Reset all filters" />
+            </StackPanel>
+
+            <!-- PW-12: Compact Settings & Help Drawer -->
+            <Border x:Name="SettingsPanel"
+                    Grid.Row="1"
+                    Grid.RowSpan="3"
+                    Margin="16,8,16,8"
+                    Padding="14"
+                    CornerRadius="8"
+                    Background="#F5161B22"
+                    BorderBrush="#4458A6FF"
+                    BorderThickness="1"
+                    Visibility="Collapsed">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <TextBlock Text="SETTINGS &amp; HELP"
+                                       Foreground="#58A6FF"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center" />
+                            <Button Content="Close (Esc)"
+                                    Click="CloseSettingsButton_Click"
+                                    HorizontalAlignment="Right"
+                                    Padding="8,3"
+                                    FontSize="10"
+                                    Foreground="#E6EDF3"
+                                    Background="#1F242C"
+                                    BorderBrush="#30363D"
+                                    Cursor="Hand"
+                                    AutomationProperties.Name="Close Settings" />
+                        </Grid>
+
+                        <CheckBox x:Name="StartWithWindowsCheckBox"
+                                  Content="Start with Windows (disabled by default)"
+                                  IsChecked="{Binding StartWithWindows, Mode=TwoWay}"
+                                  Checked="StartWithWindowsCheckBox_Changed"
+                                  Unchecked="StartWithWindowsCheckBox_Changed"
+                                  Foreground="#E6EDF3"
+                                  FontSize="11"
+                                  Margin="0,0,0,6"
+                                  AutomationProperties.Name="Start with Windows" />
+                        <TextBlock x:Name="StartupNoteText"
+                                   Foreground="#8B949E"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="20,0,0,8"
+                                   Visibility="Collapsed" />
+
+                        <CheckBox Content="Always on Top (Pin HUD)"
+                                  IsChecked="{Binding IsAlwaysOnTop, Mode=TwoWay}"
+                                  Foreground="#E6EDF3"
+                                  FontSize="11"
+                                  Margin="0,0,0,6"
+                                  AutomationProperties.Name="Always on Top" />
+
+                        <CheckBox Content="Fast / Priority Mode pricing (shows N/A when unverified)"
+                                  IsChecked="{Binding IsFastMode, Mode=TwoWay}"
+                                  Foreground="#E6EDF3"
+                                  FontSize="11"
+                                  Margin="0,0,0,10"
+                                  AutomationProperties.Name="Fast or Priority Mode" />
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <Button Content="Show Quick Guide"
+                                    Click="ShowOnboardingButton_Click"
+                                    Padding="9,4"
+                                    Margin="0,0,8,0"
+                                    FontSize="10"
+                                    Foreground="#E6EDF3"
+                                    Background="#1F242C"
+                                    BorderBrush="#30363D"
+                                    Cursor="Hand"
+                                    AutomationProperties.Name="Show First-Run Quick Guide" />
+                            <Button x:Name="SettingsCheckUpdateButton"
+                                    Content="Check for Updates"
+                                    Click="SettingsCheckUpdateButton_Click"
+                                    Padding="9,4"
+                                    FontSize="10"
+                                    Foreground="#58A6FF"
+                                    Background="#1F242C"
+                                    BorderBrush="#30363D"
+                                    Cursor="Hand"
+                                    AutomationProperties.Name="Check for application updates" />
+                        </StackPanel>
+
+                        <TextBlock Text="KEYBOARD SHORTCUTS"
+                                   Foreground="#8B949E"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="• Ctrl+Shift+Space: Global Show / Hide HUD&#x0a;• Ctrl+F: Focus Search&#x0a;• Ctrl+M: Toggle Fast Mode&#x0a;• Alt+1..7: Switch Provider Tabs&#x0a;• Esc: Close Settings or Clear Search"
+                                   Foreground="#C9D1D9"
+                                   FontSize="10"
+                                   Margin="0,0,0,10" />
+
+                        <TextBlock Text="PRICING PROVENANCE &amp; OFFLINE BEHAVIOR"
+                                   Foreground="#8B949E"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   Margin="0,0,0,4" />
+                        <TextBlock Text="Bundled rates include source &amp; verification date (hover any row or price). SYNC LIVE fetches OpenRouter standard rates only and never manufactures Fast/Priority multipliers. Unsupported rates display N/A and are excluded from lowest-cost comparisons."
+                                   Foreground="#C9D1D9"
+                                   FontSize="10"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
 
             <!-- Row 4: Interactive Task Cost Estimator & Status Bar -->
             <Border Grid.Row="4"
@@ -562,14 +785,27 @@
                                  Padding="4,1" />
                     </StackPanel>
 
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding StatusText}"
-                               Foreground="#7D8590"
-                               FontSize="10"
-                               VerticalAlignment="Center"
-                               HorizontalAlignment="Right"
-                               TextTrimming="CharacterEllipsis"
-                               Margin="8,0,0,0" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <Button x:Name="RetrySyncButton"
+                                Content="Retry Sync"
+                                Click="SyncButton_Click"
+                                Visibility="{Binding CanRetrySync, Converter={StaticResource BoolToVis}}"
+                                Padding="6,1"
+                                Margin="0,0,8,0"
+                                FontSize="9.5"
+                                FontWeight="SemiBold"
+                                Foreground="#F85149"
+                                Background="#22F85149"
+                                BorderBrush="#F85149"
+                                Cursor="Hand"
+                                AutomationProperties.Name="Retry live price sync"
+                                ToolTip="Retry fetching live prices from OpenRouter" />
+                        <TextBlock Text="{Binding StatusText}"
+                                   Foreground="#7D8590"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

@@ -1,4 +1,4 @@
-name: Release Windows Installer
+name: Release Windows Installer & Store MSIX
 
 on:
   push:
@@ -6,11 +6,13 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-pack:
+  test:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,16 +22,48 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Extract version from tag
+      - name: Build solution
+        run: dotnet build AiPriceWatch.sln -c Release -m:1
+
+      - name: Run unit & catalog validation tests
+        run: dotnet run --project tests/AiPriceWatch.Tests -c Release --no-build
+
+  build-and-pack:
+    needs: test
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract and verify version consistency
         id: ver
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           $version = $tag.TrimStart('v')
-          echo "version=$version" >> $env:GITHUB_OUTPUT
+          $isPrerelease = if ($version -match '-') { 'true' } else { 'false' }
 
-      - name: Install Velopack CLI (vpk)
-        run: dotnet tool install -g vpk
+          [xml]$props = Get-Content "Directory.Build.props"
+          $propsVersion = $props.Project.PropertyGroup.Version
+          if ($propsVersion -ne $version) {
+            Write-Error "Version mismatch: Git tag '$tag' ($version) does not match Directory.Build.props Version ($propsVersion)."
+            exit 1
+          }
+
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "is_prerelease=$isPrerelease" >> $env:GITHUB_OUTPUT
+
+      - name: Install pinned Velopack CLI (vpk)
+        run: dotnet tool install -g vpk --version 1.2.161
 
       - name: Publish self-contained win-x64
         run: >
@@ -50,12 +84,153 @@ jobs:
           --packTitle "AI PriceWatch"
           --outputDir releases
 
-      - name: Upload installer & update feeds to GitHub Release
+      - name: Pack Microsoft Store-compatible MSIX
+        shell: pwsh
+        run: |
+          $identity = if ("${{ vars.MSIX_IDENTITY_NAME }}") { "${{ vars.MSIX_IDENTITY_NAME }}" } else { "zprue743.AiPriceWatch" }
+          $publisher = if ("${{ vars.MSIX_PUBLISHER }}") { "${{ vars.MSIX_PUBLISHER }}" } else { "CN=zprue743" }
+          $display = if ("${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}") { "${{ vars.MSIX_PUBLISHER_DISPLAY_NAME }}" } else { "AiPriceWatch Contributors" }
+
+          ./packaging/msix/build-msix.ps1 `
+            -Version "${{ steps.ver.outputs.version }}" `
+            -PublishDir "publish" `
+            -OutputPath "releases/AiPriceWatch-${{ steps.ver.outputs.version }}-win-x64.msix" `
+            -IdentityName $identity `
+            -Publisher $publisher `
+            -PublisherDisplayName $display
+
+      - name: Verify required release artifacts exist
+        shell: pwsh
+        run: |
+          $required = @(
+            "releases/AiPriceWatch-win-Setup.exe",
+            "releases/releases.win.json",
+            "releases/RELEASES",
+            "releases/AiPriceWatch-${{ steps.ver.outputs.version }}-win-x64.msix"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path)) {
+              Write-Error "Missing required release artifact: $path"
+              exit 1
+            }
+          }
+          $nupkgs = Get-ChildItem "releases/AiPriceWatch-*-full.nupkg"
+          if ($nupkgs.Count -eq 0) {
+            Write-Error "Missing Velopack full nupkg artifact."
+            exit 1
+          }
+
+      - name: Scan release artifacts with Microsoft Defender (PW-20)
+        id: defender
+        shell: pwsh
+        run: |
+          $status = Get-MpComputerStatus
+          if (-not $status.AntivirusEnabled -or -not $status.AMServiceEnabled) {
+            Write-Error "Microsoft Defender is not operational on this runner. Cannot verify release security."
+            exit 1
+          }
+
+          Update-MpSignature -ErrorAction Stop
+          $statusAfter = Get-MpComputerStatus
+          $scanTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+          Start-MpScan -ScanType CustomScan -ScanPath (Resolve-Path "publish").Path
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Microsoft Defender scan of publish/ failed with exit code $LASTEXITCODE."
+            exit 1
+          }
+
+          Start-MpScan -ScanType CustomScan -ScanPath (Resolve-Path "releases").Path
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Microsoft Defender scan of releases/ failed with exit code $LASTEXITCODE."
+            exit 1
+          }
+
+          $threats = Get-MpThreatDetection | Where-Object { $_.InitialDetectionTime -gt (Get-Date).AddMinutes(-10) }
+          if ($threats) {
+            $threats | Format-List
+            Write-Error "Microsoft Defender detected threats during release scan!"
+            exit 1
+          }
+
+          echo "scan_time=$scanTime" >> $env:GITHUB_OUTPUT
+          echo "engine_version=$($statusAfter.AMEngineVersion)" >> $env:GITHUB_OUTPUT
+          echo "sig_version=$($statusAfter.AntivirusSignatureVersion)" >> $env:GITHUB_OUTPUT
+
+      - name: Generate and verify SHA-256 checksums & Security Report (PW-09, PW-20)
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem "releases" -File | Where-Object { $_.Name -notin @("SHA256SUMS.txt", "SECURITY-REPORT.md") } | Sort-Object Name
+          $lines = @()
+          foreach ($f in $files) {
+            $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $lines += "$hash  $($f.Name)"
+          }
+          $sumsPath = "releases/SHA256SUMS.txt"
+          Set-Content -Path $sumsPath -Value $lines -Encoding UTF8
+
+          # Verify every checksum matches on disk
+          foreach ($line in Get-Content $sumsPath) {
+            $parts = $line -split '\s+', 2
+            $expected = $parts[0]
+            $fileName = $parts[1]
+            $actual = (Get-FileHash -Path (Join-Path "releases" $fileName) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($expected -ne $actual) {
+              Write-Error "SHA-256 verification failed for $fileName"
+              exit 1
+            }
+          }
+
+          $report = @"
+          # AI PriceWatch v${{ steps.ver.outputs.version }} — Release Security & Provenance Report
+
+          - **Release Tag:** ``${{ github.ref_name }}``
+          - **Commit SHA:** ``${{ github.sha }}``
+          - **Workflow Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ## 1. Microsoft Defender Malware Scan
+          - **Status:** Passed (0 threats detected)
+          - **Scan Timestamp (UTC):** ``${{ steps.defender.outputs.scan_time }}``
+          - **Engine Version:** ``${{ steps.defender.outputs.engine_version }}``
+          - **Signature Version:** ``${{ steps.defender.outputs.sig_version }}``
+          - **Scanned Targets:** Extracted application binaries (``publish/``) and final distributables (``releases/``)
+
+          ## 2. Signing & Distribution Channel Status
+          - **Microsoft Store (MSIX):** Signed by Microsoft Store during Store certification and distribution.
+          - **GitHub Releases / WinGet (Velopack EXE):** **Unsigned** Windows executable installer; verify integrity via SHA-256 checksums and GitHub Build Attestations below. (Antivirus scans do not eliminate Windows SmartScreen warnings.)
+
+          ## 3. SHA-256 Checksums
+          ``````text
+          $($lines -join "`n")
+          ``````
+
+          ## 4. Build Provenance Verification (GitHub CLI)
+          ``````powershell
+          gh attestation verify AiPriceWatch-win-Setup.exe --repo ${{ github.repository }}
+          gh attestation verify AiPriceWatch-${{ steps.ver.outputs.version }}-win-x64.msix --repo ${{ github.repository }}
+          ``````
+          "@
+          Set-Content -Path "releases/SECURITY-REPORT.md" -Value $report -Encoding UTF8
+
+      - name: Generate GitHub Artifact Attestations (PW-20)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            releases/AiPriceWatch-win-Setup.exe
+            releases/AiPriceWatch-*-full.nupkg
+            releases/AiPriceWatch-*-win-x64.msix
+
+      - name: Upload installer, MSIX, checksums & security report to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.ver.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
           files: |
             releases/AiPriceWatch-win-Setup.exe
             releases/AiPriceWatch-*-full.nupkg
             releases/AiPriceWatch-*-delta.nupkg
+            releases/AiPriceWatch-*-win-x64.msix
             releases/releases.win.json
             releases/RELEASES
+            releases/SHA256SUMS.txt
+            releases/SECURITY-REPORT.md
