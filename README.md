@@ -1,6 +1,9 @@
 # AI PriceWatch
 
-A lightweight, terminal-sized (`860×510`) transparent desktop HUD overlay for Windows that lets you select an AI provider, compare model token pricing (`$/1M` in both **Standard** and **Fast / Priority** modes), inspect published **Artificial Analysis Intelligence Index (AAII)** benchmark scores, filter by task tier, and calculate exact workload costs at a glance.
+<img width="880" height="503" alt="image" src="https://github.com/user-attachments/assets/eff5ff80-b56a-4bd6-bfb8-d62243402d94" />
+
+
+A lightweight, transparent desktop HUD overlay for Windows that lets you select an AI provider, compare model token pricing (`$/1M` in both **Standard** and **Fast / Priority** modes), inspect published **Artificial Analysis Intelligence Index (AAII)** benchmark scores, filter by task tier, and calculate exact workload costs at a glance.
 
 ## Features
 
