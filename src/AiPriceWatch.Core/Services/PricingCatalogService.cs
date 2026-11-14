@@ -53,8 +53,24 @@ public sealed class PricingCatalogService
             return new PricingCatalogService(Array.Empty<ModelPricingEntry>());
         }
 
-        List<ModelPricingEntry>? entries = JsonSerializer.Deserialize<List<ModelPricingEntry>>(json, JsonOptions);
-        return new PricingCatalogService(entries ?? []);
+        try
+        {
+            List<ModelPricingEntry>? entries = JsonSerializer.Deserialize<List<ModelPricingEntry>>(json, JsonOptions);
+            if (entries is null)
+            {
+                return new PricingCatalogService(Array.Empty<ModelPricingEntry>());
+            }
+
+            // Filter out null or structurally invalid entries without crashing startup.
+            var valid = entries
+                .Where(e => e is not null && !string.IsNullOrWhiteSpace(e.Id) && !string.IsNullOrWhiteSpace(e.Name))
+                .ToList();
+            return new PricingCatalogService(valid);
+        }
+        catch (JsonException)
+        {
+            return new PricingCatalogService(Array.Empty<ModelPricingEntry>());
+        }
     }
 
     public IReadOnlyList<string> GetProviders()

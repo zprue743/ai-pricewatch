@@ -12,4 +12,28 @@ public sealed record ModelPricingEntry(
     string Notes,
     decimal? FastInputPerMillion = null,
     decimal? FastOutputPerMillion = null,
-    decimal? IntelligenceScore = null);
+    decimal? IntelligenceScore = null,
+    string? OpenRouterId = null,
+    FieldProvenance? PricingSource = null,
+    FieldProvenance? CachedPricingSource = null,
+    FieldProvenance? FastPricingSource = null,
+    BenchmarkProvenance? BenchmarkSource = null)
+{
+    public FieldProvenance EffectiveStandardProvenance =>
+        PricingSource ?? FieldProvenance.Unknown;
+
+    public FieldProvenance EffectiveCachedProvenance =>
+        CachedPricingSource ?? (CachedInputPerMillion is null
+            ? FieldProvenance.Unavailable
+            : PricingSource ?? FieldProvenance.Unknown);
+
+    public FieldProvenance EffectiveFastProvenance =>
+        FastPricingSource ?? (FastInputPerMillion is null || FastOutputPerMillion is null
+            ? FieldProvenance.Unavailable
+            : PricingSource ?? FieldProvenance.Unknown);
+
+    public BenchmarkProvenance EffectiveBenchmarkProvenance =>
+        BenchmarkSource ?? (IntelligenceScore is null
+            ? BenchmarkProvenance.Unavailable
+            : BenchmarkProvenance.Unknown);
+}

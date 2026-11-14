@@ -51,6 +51,27 @@ public sealed class ModelRowViewModel
 
         EstimatedTaskCostDisplay = TaskCostCalculator.FormatCost(EstimatedTaskCostRaw);
         Notes = entry.Notes;
+        StandardProvenance = entry.EffectiveStandardProvenance;
+        CachedProvenance = entry.EffectiveCachedProvenance;
+        FastProvenance = entry.EffectiveFastProvenance;
+        BenchmarkProvenance = entry.EffectiveBenchmarkProvenance;
+
+        PricingSourceBadge = StandardProvenance.SourceType switch
+        {
+            PriceSourceType.DirectProvider => "Direct",
+            PriceSourceType.OpenRouter => "OpenRouter",
+            PriceSourceType.Estimate => "Estimated",
+            _ => "Unknown"
+        };
+
+        StandardPricingTooltip = $"Standard: {StandardProvenance.FormatSummary()}";
+        CachedPricingTooltip = $"Cached: {CachedProvenance.FormatSummary()}";
+        FastPricingTooltip = $"Fast/Priority: {FastProvenance.FormatSummary()}";
+        BenchmarkTooltip = BenchmarkProvenance.FormatSummary();
+        RowDetailsTooltip = string.IsNullOrWhiteSpace(entry.Notes)
+            ? $"{StandardPricingTooltip}\n{CachedPricingTooltip}\n{FastPricingTooltip}\nBenchmark: {BenchmarkTooltip}"
+            : $"{entry.Notes}\n\n{StandardPricingTooltip}\n{CachedPricingTooltip}\n{FastPricingTooltip}\nBenchmark: {BenchmarkTooltip}";
+
         IsCheapestInView = isCheapestInView;
         IsFastModeActive = isFastMode;
         IsHidden = isHidden;
@@ -73,6 +94,16 @@ public sealed class ModelRowViewModel
     public decimal EstimatedTaskCostRaw { get; }
     public string EstimatedTaskCostDisplay { get; }
     public string Notes { get; }
+    public FieldProvenance StandardProvenance { get; }
+    public FieldProvenance CachedProvenance { get; }
+    public FieldProvenance FastProvenance { get; }
+    public BenchmarkProvenance BenchmarkProvenance { get; }
+    public string PricingSourceBadge { get; }
+    public string StandardPricingTooltip { get; }
+    public string CachedPricingTooltip { get; }
+    public string FastPricingTooltip { get; }
+    public string BenchmarkTooltip { get; }
+    public string RowDetailsTooltip { get; }
     public bool IsCheapestInView { get; }
     public bool IsFastModeActive { get; }
     public bool IsHidden { get; }

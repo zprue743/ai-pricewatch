@@ -87,7 +87,7 @@ public static class TaskCostCalculator
     {
         if (score is null || score.Value <= 0m)
         {
-            return "—";
+            return "N/A";
         }
 
         return string.Create(CultureInfo.InvariantCulture, $"{score.Value:F1}");

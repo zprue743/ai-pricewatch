@@ -44,7 +44,7 @@ AssertEqual("$0.15", TaskCostCalculator.FormatPricePerMillion(0.15m), "Standard 
 AssertEqual("$0.075", TaskCostCalculator.FormatPricePerMillion(0.075m), "Sub-cent price per million format");
 AssertEqual("$2.00 / $10.00", TaskCostCalculator.FormatInOutPair(2.00m, 10.00m), "In/Out pair format");
 AssertEqual("59.1", TaskCostCalculator.FormatScore(59.1m), "Intelligence score format");
-AssertEqual("—", TaskCostCalculator.FormatScore(null), "Null score format");
+AssertEqual("N/A", TaskCostCalculator.FormatScore(null), "Null score format");
 AssertEqual("128K", TaskCostCalculator.FormatContextWindow(128_000), "Thousands context window");
 AssertEqual("1M", TaskCostCalculator.FormatContextWindow(1_000_000), "Millions context window");
 AssertEqual("2M", TaskCostCalculator.FormatContextWindow(2_000_000), "2M context window");
@@ -185,5 +185,77 @@ finally
         File.Delete(tempPrefsPath);
     }
 }
+
+// PW-01: Pricing & Benchmark Source Metadata
+string provenanceJson = """
+[
+  {
+    "id": "test-model-full",
+    "name": "Test Model Full",
+    "provider": "Anthropic",
+    "tier": "Balanced",
+    "inputPerMillion": 2.00,
+    "cachedInputPerMillion": 0.10,
+    "outputPerMillion": 10.00,
+    "fastInputPerMillion": 4.00,
+    "fastOutputPerMillion": 20.00,
+    "intelligenceScore": 54.5,
+    "contextTokens": 200000,
+    "notes": "Test full provenance",
+    "openRouterId": "anthropic/test-model-full",
+    "pricingSource": {
+      "sourceName": "Anthropic Pricing Docs",
+      "sourceUrl": "https://docs.anthropic.com/en/docs/about-claude/pricing",
+      "sourceType": "directProvider",
+      "lastVerifiedAt": "2026-11-14T00:00:00Z",
+      "status": "verified"
+    },
+    "benchmarkSource": {
+      "publisher": "Artificial Analysis",
+      "benchmarkName": "Intelligence Index",
+      "version": "v5",
+      "scoreDate": "2026-11-10T00:00:00Z",
+      "status": "verified"
+    }
+  },
+  {
+    "id": "test-model-partial",
+    "name": "Test Model Partial",
+    "provider": "OpenAI",
+    "tier": "Fast",
+    "inputPerMillion": 0.25,
+    "cachedInputPerMillion": null,
+    "outputPerMillion": 2.00,
+    "contextTokens": 128000,
+    "notes": "Missing fast, cache, and benchmark"
+  }
+]
+""";
+var provenanceCatalog = PricingCatalogService.FromJson(provenanceJson);
+AssertEqual(2, provenanceCatalog.AllModels.Count, "Parses catalog entries with full and partial provenance");
+
+var fullEntry = provenanceCatalog.AllModels[0];
+AssertEqual("anthropic/test-model-full", fullEntry.OpenRouterId, "Parses explicit OpenRouterId");
+AssertEqual(PriceSourceType.DirectProvider, fullEntry.EffectiveStandardProvenance.SourceType, "Parses directProvider source type");
+AssertEqual(DataVerificationStatus.Verified, fullEntry.EffectiveStandardProvenance.Status, "Parses verified pricing status");
+AssertEqual("Artificial Analysis", fullEntry.EffectiveBenchmarkProvenance.Publisher, "Parses benchmark publisher");
+
+var partialEntry = provenanceCatalog.AllModels[1];
+AssertEqual(PriceSourceType.Unknown, partialEntry.EffectiveStandardProvenance.SourceType, "Missing provenance defaults to Unknown");
+AssertEqual(DataVerificationStatus.Unavailable, partialEntry.EffectiveCachedProvenance.Status, "Null cached price defaults to Unavailable provenance");
+AssertEqual(DataVerificationStatus.Unavailable, partialEntry.EffectiveFastProvenance.Status, "Null fast price defaults to Unavailable provenance");
+AssertEqual(DataVerificationStatus.Unavailable, partialEntry.EffectiveBenchmarkProvenance.Status, "Null score defaults to Unavailable benchmark provenance");
+
+var fullRow = new ModelRowViewModel(fullEntry, 10_000, 0, 2_000, isCheapestInView: false);
+AssertEqual("Direct", fullRow.PricingSourceBadge, "Row badge reflects DirectProvider");
+AssertTrue(fullRow.BenchmarkTooltip.Contains("Artificial Analysis", StringComparison.Ordinal), "Benchmark tooltip includes publisher");
+AssertTrue(fullRow.RowDetailsTooltip.Contains("2026-11-14", StringComparison.Ordinal), "Row details tooltip includes verification date");
+
+var partialRow = new ModelRowViewModel(partialEntry, 10_000, 0, 2_000, isCheapestInView: false);
+AssertEqual("Unknown", partialRow.PricingSourceBadge, "Row badge reflects Unknown when provenance omitted");
+AssertEqual("N/A", partialRow.ScoreDisplay, "Row score displays N/A when missing");
+
+var malformedCatalog = PricingCatalogService.FromJson("{ invalid json [");
+AssertEqual(0, malformedCatalog.AllModels.Count, "Malformed JSON does not crash startup and returns empty catalog");
 
 Console.WriteLine($"All tests passed ({passed} assertions).");
