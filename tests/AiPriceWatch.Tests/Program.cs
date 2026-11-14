@@ -369,6 +369,17 @@ AssertTrue(invalidValidation.Errors.Any(e => e.Contains("Duplicate model Id", St
 AssertTrue(invalidValidation.Errors.Any(e => e.Contains("negative standard pricing", StringComparison.Ordinal)), "CatalogValidator reports negative pricing");
 AssertTrue(invalidValidation.Errors.Any(e => e.Contains("missing standard pricing provenance", StringComparison.Ordinal)), "CatalogValidator reports missing provenance");
 
+// PW-05: Defensible task cost boundary conditions (zero tokens, large values, ties)
+AssertEqual((decimal?)0m, TaskCostCalculator.CalculateCostOrNull(sampleFastModel, 0, 0, 0, useFastMode: false), "Zero tokens yields $0.0000");
+decimal? largeCost = TaskCostCalculator.CalculateCostOrNull(sampleFastModel, int.MaxValue, int.MaxValue, int.MaxValue, useFastMode: true);
+AssertTrue(largeCost.HasValue && largeCost.Value > 0m, "Large token counts (int.MaxValue) compute safely without overflow");
+
+var tieA = new ModelPricingEntry("tie-a", "Tie A", "OpenAI", TaskTier.Fast, 1.00m, null, 2.00m, 128000, "Tie A", IntelligenceScore: 40m);
+var tieB = new ModelPricingEntry("tie-b", "Tie B", "Anthropic", TaskTier.Fast, 1.00m, null, 2.00m, 128000, "Tie B", IntelligenceScore: 50m);
+var tieCatalog = new PricingCatalogService([tieA, tieB]);
+var tieRanked = tieCatalog.Query(sort: PricingSortField.TotalTaskCostAsc);
+AssertEqual("tie-b", tieRanked[0].Id, "Cost tie-breaker deterministically prefers higher IntelligenceScore");
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
