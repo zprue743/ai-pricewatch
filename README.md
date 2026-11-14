@@ -5,6 +5,16 @@
 
 A lightweight, transparent desktop HUD overlay for Windows that lets you select an AI provider, compare model token pricing (`$/1M` in both **Standard** and **Fast / Priority** modes), inspect published **Artificial Analysis Intelligence Index (AAII)** benchmark scores, filter by task tier, and calculate exact workload costs at a glance.
 
+## Install (Windows 10 / 11)
+
+No Git, GitHub navigation, or separate `.NET` runtime installation is required.
+
+1. Open the **[AI PriceWatch Download Page](https://zprue743.github.io/ai-pricewatch/)** (or download **[AiPriceWatch-win-Setup.exe](https://github.com/zprue743/ai-pricewatch/releases/latest/download/AiPriceWatch-win-Setup.exe)** directly).
+2. Double-click **`AiPriceWatch-win-Setup.exe`** to install and launch the app (creates Start Menu & Desktop shortcuts automatically).
+   - *If Windows SmartScreen shows **"Windows protected your PC"**, click **More info** → **Run anyway**.*
+3. Press **`Ctrl+Shift+Space`** anytime to show or hide the HUD.
+4. **Updating:** When a new version is released, an **`UPDATE`** button appears in the top bar—click it to update and restart directly from inside the app.
+
 ## Features
 
 - **Translucent Terminal HUD (`860×510` default, resizable):** Frameless dark overlay with an independent background opacity slider (`35%–100%`) that keeps text 100% crisp while letting you see your active windows behind it.
@@ -26,9 +36,9 @@ A lightweight, transparent desktop HUD overlay for Windows that lets you select 
 | `Ctrl+F` | Focus the search bar |
 | `Esc` | Clear active search query |
 
-## Build, Run & Test
+## Build, Run & Test (Developers)
 
-Requires the **.NET 10 SDK (`net10.0-windows`)**. Zero external NuGet dependencies required.
+Requires the **.NET 10 SDK (`net10.0-windows`)**. Uses [Velopack](https://velopack.io/) for Windows installer packaging and in-app updates.
 
 ```powershell
 # Build the entire solution
