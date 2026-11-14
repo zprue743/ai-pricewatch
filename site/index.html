@@ -148,6 +148,49 @@
       border: 1px solid var(--border);
       border-radius: 5px;
     }
+    .verify-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .code-block-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .code-block {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #0b0f17;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .code-block pre {
+      margin: 0;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.84rem;
+      color: var(--text);
+      white-space: pre;
+    }
+    .copy-btn {
+      flex-shrink: 0;
+      background: #1b2434;
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .copy-btn:hover {
+      background: #243147;
+    }
     footer {
       text-align: center;
       padding: 20px;
@@ -217,9 +260,21 @@
         Every GitHub release is scanned by Microsoft Defender in CI, published with SHA-256 checksums (<code>SHA256SUMS.txt</code>) and a scan report (<code>SECURITY-REPORT.md</code>), and signed with GitHub Artifact Attestations.
         Antivirus scans and attestations verify build provenance and file integrity — they do not replace Authenticode code signing or eliminate SmartScreen prompts on unsigned EXE installers.
       </p>
-      <div class="shortcut-list">
-        <div><strong>Verify provenance:</strong> <code>gh attestation verify AiPriceWatch-win-Setup.exe --repo zprue743/ai-pricewatch</code></div>
-        <div><strong>Verify SHA-256:</strong> <code>Get-FileHash AiPriceWatch-win-Setup.exe -Algorithm SHA256</code></div>
+      <div class="verify-stack">
+        <div>
+          <div class="code-block-label">Verify build provenance (GitHub CLI)</div>
+          <div class="code-block">
+            <pre><code id="cmd-attestation">gh attestation verify AiPriceWatch-win-Setup.exe --repo zprue743/ai-pricewatch</code></pre>
+            <button type="button" class="copy-btn" data-copy-target="cmd-attestation">Copy</button>
+          </div>
+        </div>
+        <div>
+          <div class="code-block-label">Verify SHA-256 checksum (PowerShell)</div>
+          <div class="code-block">
+            <pre><code id="cmd-sha256">Get-FileHash AiPriceWatch-win-Setup.exe -Algorithm SHA256</code></pre>
+            <button type="button" class="copy-btn" data-copy-target="cmd-sha256">Copy</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -239,5 +294,26 @@
     <a href="https://github.com/zprue743/ai-pricewatch">Source on GitHub</a> •
     <a href="https://github.com/zprue743/ai-pricewatch/releases">All Releases</a>
   </footer>
+  <script>
+    document.querySelectorAll('.copy-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const target = document.getElementById(btn.dataset.copyTarget);
+        if (!target) return;
+        try {
+          await navigator.clipboard.writeText(target.textContent.trim());
+          const orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = orig; }, 1600);
+        } catch {
+          // Fallback selection if clipboard API is unavailable
+          const range = document.createRange();
+          range.selectNodeContents(target);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      });
+    });
+  </script>
 </body>
 </html>
