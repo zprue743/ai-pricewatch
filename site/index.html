@@ -174,16 +174,17 @@
           class="btn-download"
           href="https://github.com/zprue743/ai-pricewatch/releases/latest/download/AiPriceWatch-win-Setup.exe"
         >
-          ⬇ Download for Windows
+          ⬇ Download Velopack Installer (GitHub)
         </a>
         <div class="meta">
-          <div><strong>One-click installer</strong> (Windows x64)</div>
-          <div>Self-contained — no separate .NET install required • Auto-updates in-app</div>
+          <div><strong>Windows x64 • Self-contained (.NET 10 included)</strong></div>
+          <div>Auto-updates in-app • Also available via <code>winget install zprue743.AiPriceWatch</code> (once published)</div>
         </div>
       </div>
       <div class="note">
-        <strong>Windows SmartScreen note:</strong> If Windows shows <em>"Windows protected your PC"</em>,
-        click <strong>More info</strong> → <strong>Run anyway</strong>. (Unsigned indie build.)
+        <strong>Channel signing status:</strong> Microsoft Store (MSIX) builds are signed by Microsoft during Store certification.
+        GitHub Releases and WinGet Velopack EXE installers (<code>AiPriceWatch-win-Setup.exe</code>) are <strong>unsigned</strong>;
+        always verify integrity using <code>SHA256SUMS.txt</code> and GitHub build attestations below.
       </div>
     </section>
 
@@ -197,16 +198,28 @@
 
     <section class="grid">
       <div class="card">
-        <h2>Standard vs. Fast Mode</h2>
-        <p>Compare Standard and Fast/Priority $/1M token rates side-by-side across Anthropic, Google Gemini, OpenAI, Cursor, xAI, and DeepSeek.</p>
+        <h2>Verified Provenance &amp; Strict N/A</h2>
+        <p>Every price and benchmark score shows its source and verification date. Unsupported Fast/Priority rates display <strong>N/A</strong> rather than manufactured multipliers.</p>
       </div>
       <div class="card">
         <h2>Task Cost Calculator</h2>
-        <p>Pick a workload preset or enter custom input, cache, and output token counts to see exact dollar estimates and the Best Value model.</p>
+        <p>Pick a workload preset or enter custom input, cached, and output token counts to see deterministic dollar estimates and the <strong>Lowest Estimated Cost</strong> model.</p>
       </div>
       <div class="card">
-        <h2>Offline-First + Live Sync</h2>
-        <p>Works immediately offline with a curated catalog, plus one-click Live Sync from OpenRouter and automatic in-app updates.</p>
+        <h2>Offline-First + Tray Resident</h2>
+        <p>Works offline with the bundled catalog, syncs standard rates from OpenRouter on demand, and stays tucked in your Windows system tray.</p>
+      </div>
+    </section>
+
+    <section class="shortcuts" style="margin-bottom: 32px;">
+      <h2>Release Security &amp; Verification</h2>
+      <p style="font-size: 0.9rem; color: var(--muted); margin-bottom: 12px;">
+        Every GitHub release is scanned by Microsoft Defender in CI, published with SHA-256 checksums (<code>SHA256SUMS.txt</code>) and a scan report (<code>SECURITY-REPORT.md</code>), and signed with GitHub Artifact Attestations.
+        Antivirus scans and attestations verify build provenance and file integrity — they do not replace Authenticode code signing or eliminate SmartScreen prompts on unsigned EXE installers.
+      </p>
+      <div class="shortcut-list">
+        <div><strong>Verify provenance:</strong> <code>gh attestation verify AiPriceWatch-win-Setup.exe --repo zprue743/ai-pricewatch</code></div>
+        <div><strong>Verify SHA-256:</strong> <code>Get-FileHash AiPriceWatch-win-Setup.exe -Algorithm SHA256</code></div>
       </div>
     </section>
 
