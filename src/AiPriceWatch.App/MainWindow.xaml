@@ -218,11 +218,12 @@
 
                         <ComboBox x:Name="SortComboBox"
                                   Grid.Column="2"
-                                  Width="158"
+                                  Width="172"
                                   FontSize="11"
                                   SelectionChanged="SortComboBox_SelectionChanged"
                                   SelectedIndex="0"
                                   ToolTip="Sort models">
+                            <ComboBoxItem Content="Sort: Flagships First" Tag="Featured" />
                             <ComboBoxItem Content="Sort: Input $/1M ↑" Tag="InputPriceAsc" />
                             <ComboBoxItem Content="Sort: Output $/1M ↑" Tag="OutputPriceAsc" />
                             <ComboBoxItem Content="Sort: Est. Task Cost ↑" Tag="TotalTaskCostAsc" />

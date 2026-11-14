@@ -69,7 +69,7 @@ public sealed class PricingCatalogService
         string? provider = null,
         TaskTier? tier = null,
         string? searchText = null,
-        PricingSortField sort = PricingSortField.InputPriceAsc,
+        PricingSortField sort = PricingSortField.Featured,
         int taskInputTokens = 10_000,
         int taskCachedTokens = 0,
         int taskOutputTokens = 2_000)
@@ -100,6 +100,7 @@ public sealed class PricingCatalogService
 
         query = sort switch
         {
+            PricingSortField.Featured => query,
             PricingSortField.InputPriceAsc => query
                 .OrderBy(m => m.InputPerMillion)
                 .ThenBy(m => m.OutputPerMillion),
@@ -114,7 +115,7 @@ public sealed class PricingCatalogService
                 .ThenBy(m => m.InputPerMillion),
             PricingSortField.NameAsc => query
                 .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase),
-            _ => query.OrderBy(m => m.InputPerMillion)
+            _ => query
         };
 
         return query.ToList();
