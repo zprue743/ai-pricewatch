@@ -134,17 +134,8 @@ jobs:
           $statusAfter = Get-MpComputerStatus
           $scanTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
-          Start-MpScan -ScanType CustomScan -ScanPath (Resolve-Path "publish").Path
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Microsoft Defender scan of publish/ failed with exit code $LASTEXITCODE."
-            exit 1
-          }
-
-          Start-MpScan -ScanType CustomScan -ScanPath (Resolve-Path "releases").Path
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Microsoft Defender scan of releases/ failed with exit code $LASTEXITCODE."
-            exit 1
-          }
+          Start-MpScan -ScanType CustomScan -ScanPath (Resolve-Path "publish").Path -ErrorAction Stop
+          Start-MpScan -ScanType CustomScan -ScanPath (Resolve-Path "releases").Path -ErrorAction Stop
 
           $threats = Get-MpThreatDetection | Where-Object { $_.InitialDetectionTime -gt (Get-Date).AddMinutes(-10) }
           if ($threats) {
