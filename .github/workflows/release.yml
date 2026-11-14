@@ -1,0 +1,61 @@
+name: Release Windows Installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-pack:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install Velopack CLI (vpk)
+        run: dotnet tool install -g vpk
+
+      - name: Publish self-contained win-x64
+        run: >
+          dotnet publish src/AiPriceWatch.App/AiPriceWatch.App.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:Version=${{ steps.ver.outputs.version }}
+          -o publish
+
+      - name: Pack Velopack installer
+        run: >
+          vpk pack
+          --packId AiPriceWatch
+          --packVersion ${{ steps.ver.outputs.version }}
+          --packDir publish
+          --mainExe AiPriceWatch.App.exe
+          --packTitle "AI PriceWatch"
+          --outputDir releases
+
+      - name: Upload installer & update feeds to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            releases/AiPriceWatch-win-Setup.exe
+            releases/AiPriceWatch-*-full.nupkg
+            releases/AiPriceWatch-*-delta.nupkg
+            releases/releases.win.json
+            releases/RELEASES

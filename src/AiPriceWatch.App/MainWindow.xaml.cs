@@ -7,6 +7,7 @@ using AiPriceWatch.App.Services;
 using AiPriceWatch.Core.Models;
 using AiPriceWatch.Core.Services;
 using AiPriceWatch.Core.ViewModels;
+using Velopack;
 
 namespace AiPriceWatch.App;
 
@@ -18,7 +19,9 @@ public partial class MainWindow : Window
     };
 
     private readonly HudViewModel _viewModel;
+    private readonly AppUpdateService _updateService = new();
     private GlobalHotkeyService? _hotkeyService;
+    private UpdateInfo? _pendingUpdate;
 
     public MainWindow()
     {
@@ -31,6 +34,7 @@ public partial class MainWindow : Window
         UpdateHudBackgroundAlpha(_viewModel.BackgroundOpacity);
 
         SourceInitialized += OnSourceInitialized;
+        Loaded += OnWindowLoaded;
         Closed += OnWindowClosed;
     }
 
@@ -181,6 +185,43 @@ public partial class MainWindow : Window
         PinButton.Foreground = new SolidColorBrush(_viewModel.IsAlwaysOnTop
             ? Color.FromRgb(0x58, 0xA6, 0xFF)
             : Color.FromRgb(0x8B, 0x94, 0x9E));
+    }
+
+    private async void OnWindowLoaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _pendingUpdate = await _updateService.CheckForUpdatesAsync();
+            if (_pendingUpdate is not null)
+            {
+                UpdateButton.Content = $"UPDATE v{_pendingUpdate.TargetFullRelease.Version}";
+                UpdateButton.Visibility = Visibility.Visible;
+            }
+        }
+        catch
+        {
+            // Ignore offline or GitHub rate-limit errors during background update check.
+        }
+    }
+
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pendingUpdate is null)
+        {
+            return;
+        }
+
+        UpdateButton.IsEnabled = false;
+        UpdateButton.Content = "UPDATING...";
+        try
+        {
+            await _updateService.DownloadAndRestartAsync(_pendingUpdate);
+        }
+        catch
+        {
+            UpdateButton.Content = $"UPDATE v{_pendingUpdate.TargetFullRelease.Version}";
+            UpdateButton.IsEnabled = true;
+        }
     }
 
     private async void SyncButton_Click(object sender, RoutedEventArgs e)

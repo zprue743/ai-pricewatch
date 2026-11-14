@@ -130,7 +130,7 @@
                                 Content="SYNC LIVE"
                                 Click="SyncButton_Click"
                                 Padding="7,2"
-                                Margin="0,0,8,0"
+                                Margin="0,0,6,0"
                                 FontSize="10"
                                 FontWeight="SemiBold"
                                 Foreground="#3FB950"
@@ -138,6 +138,20 @@
                                 BorderBrush="#30363D"
                                 Cursor="Hand"
                                 ToolTip="Fetch live model token prices from OpenRouter" />
+
+                        <Button x:Name="UpdateButton"
+                                Content="UPDATE"
+                                Click="UpdateButton_Click"
+                                Visibility="Collapsed"
+                                Padding="7,2"
+                                Margin="0,0,8,0"
+                                FontSize="10"
+                                FontWeight="SemiBold"
+                                Foreground="#F0883E"
+                                Background="#1F242C"
+                                BorderBrush="#30363D"
+                                Cursor="Hand"
+                                ToolTip="Download and install the latest version" />
 
                         <Button Content="—"
                                 Click="MinimizeButton_Click"
