@@ -656,11 +656,20 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <Grid Margin="0,0,0,10">
-                            <TextBlock Text="SETTINGS &amp; HELP"
-                                       Foreground="#58A6FF"
-                                       FontSize="12"
-                                       FontWeight="Bold"
-                                       VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="SETTINGS &amp; HELP"
+                                           Foreground="#58A6FF"
+                                           FontSize="12"
+                                           FontWeight="Bold"
+                                           VerticalAlignment="Center" />
+                                <TextBlock x:Name="SettingsVersionText"
+                                           Text="v0.0.0"
+                                           Foreground="#8B949E"
+                                           FontSize="10"
+                                           VerticalAlignment="Center"
+                                           Margin="8,1,0,0"
+                                           AutomationProperties.Name="Application version" />
+                            </StackPanel>
                             <Button Content="Close (Esc)"
                                     Click="CloseSettingsButton_Click"
                                     HorizontalAlignment="Right"
