@@ -571,6 +571,215 @@ AssertEqual("v0.1.0", AppVersionInfo.FormatDisplayVersion("  ", new Version(0, 1
 AssertEqual("v0.0.0", AppVersionInfo.FormatDisplayVersion(null, null), "FormatDisplayVersion returns v0.0.0 when no version metadata is available");
 AssertTrue(AppVersionInfo.GetDisplayVersion(typeof(AppVersionInfo).Assembly).StartsWith("v0.", StringComparison.Ordinal), "GetDisplayVersion reads version from Core assembly");
 
+// Task 1 (Price Diffs & Add Models): OpenRouterModelCandidate extraction
+string candidateJson = """
+{
+  "data": [
+    {
+      "id": "anthropic/claude-sonnet-4.6",
+      "name": "Anthropic: Claude Sonnet 4.6",
+      "context_length": 200000,
+      "pricing": { "prompt": "0.000003", "completion": "0.000015", "input_cache_read": "0.0000003" }
+    },
+    {
+      "id": "mistralai/mistral-large-2512",
+      "name": "Mistral Large",
+      "context_length": 131072,
+      "pricing": { "prompt": "0.000002", "completion": "0.000006" }
+    }
+  ]
+}
+""";
+OpenRouterSyncResult candidateResult = OpenRouterPriceParser.MergeLivePricesDetailed(catalog.AllModels, candidateJson);
+AssertTrue(candidateResult.IsValidPayload, "Candidate extraction payload valid");
+AssertEqual(2, candidateResult.AvailableModels.Count, "AvailableModels captures all valid OpenRouter entries");
+var mistral = candidateResult.AvailableModels.First(m => m.FullId == "mistralai/mistral-large-2512");
+AssertEqual("Mistral Large", mistral.Name, "Candidate name parsed");
+AssertEqual("Mistralai", mistral.Provider, "Unknown provider slug capitalized");
+AssertEqual(131072, mistral.ContextTokens, "Candidate context_length parsed");
+AssertEqual(2.00m, mistral.InputPerMillion, "Candidate input price parsed");
+AssertEqual("Google Gemini", OpenRouterPriceParser.MapProviderName("google/gemini-2.5-pro"), "Google slug maps to Google Gemini");
+
+// Task 2 (Price Diffs & Add Models): SyncSnapshotStore atomic persistence & fallback
+string tempSnapshotPath = Path.Combine(Path.GetTempPath(), $"apw-snapshot-{Guid.NewGuid():N}.json");
+try
+{
+    var snapshotStore = new SyncSnapshotStore(tempSnapshotPath);
+    var addedEntry = new ModelPricingEntry(
+        "mistralai/mistral-large-2512", "Mistral Large", "Mistralai", TaskTier.Balanced,
+        2.00m, null, 6.00m, 131072, "Added from OpenRouter", OpenRouterId: "mistralai/mistral-large-2512");
+    var snap = new SyncSnapshot
+    {
+        LastSyncedAt = DateTimeOffset.UtcNow,
+        KnownOpenRouterIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "mistralai/mistral-large-2512" },
+        LastPricesByModelId = new Dictionary<string, PriceSnapshot>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["claude-sonnet-4.6"] = new PriceSnapshot(3.00m, 15.00m, 0.30m)
+        },
+        AddedModels = new List<ModelPricingEntry> { addedEntry },
+        ActivePriceDiffs = new Dictionary<string, PriceDiff>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["claude-sonnet-4.6"] = new PriceDiff(4.00m, 20.00m, 3.00m, 15.00m, -25.0m, DateTimeOffset.UtcNow)
+        }
+    };
+    snapshotStore.Save(snap);
+    SyncSnapshot loadedSnap = snapshotStore.Load();
+    AssertEqual(1, loadedSnap.AddedModels.Count, "SyncSnapshotStore round-trips AddedModels");
+    AssertTrue(loadedSnap.KnownOpenRouterIds.Contains("MISTRALAI/MISTRAL-LARGE-2512"), "KnownOpenRouterIds comparer is case-insensitive");
+    AssertEqual(-25.0m, loadedSnap.ActivePriceDiffs["claude-sonnet-4.6"].PercentChange, "ActivePriceDiffs round-tripped");
+
+    snapshotStore.ClearDiffs();
+    SyncSnapshot afterClear = snapshotStore.Load();
+    AssertEqual(0, afterClear.ActivePriceDiffs.Count, "ClearDiffs clears ActivePriceDiffs");
+    AssertEqual(1, afterClear.AddedModels.Count, "ClearDiffs preserves AddedModels");
+
+    File.WriteAllText(tempSnapshotPath, "{ invalid json");
+    SyncSnapshot corruptFallback = snapshotStore.Load();
+    AssertEqual(0, corruptFallback.AddedModels.Count, "Corrupt snapshot returns empty SyncSnapshot");
+}
+finally
+{
+    if (File.Exists(tempSnapshotPath)) File.Delete(tempSnapshotPath);
+}
+
+// Task 3 (Price Diffs & Add Models): CatalogDiffCalculator
+var prevModels = new List<ModelPricingEntry> { sampleFastModel };
+var currModels = new List<ModelPricingEntry> { sampleFastModel with { OutputPerMillion = 1.50m } };
+var priorPrices = new Dictionary<string, PriceSnapshot>(StringComparer.OrdinalIgnoreCase)
+{
+    [sampleFastModel.Id] = new PriceSnapshot(0.25m, 2.00m, 0.025m)
+};
+var candidates = new List<OpenRouterModelCandidate>
+{
+    new("openai/gpt-5-mini", "GPT-5 Mini", "OpenAI", 0.25m, 1.50m, 0.025m, 1_000_000),
+    new("cohere/command-a", "Command A", "Cohere", 2.50m, 10.00m, null, 256_000)
+};
+
+// First sync: no prior known IDs -> 0 NewOpenRouterIds
+CatalogDiffResult firstSync = CatalogDiffCalculator.ComputeDiffs(
+    prevModels, currModels, candidates, priorPrices, new HashSet<string>(StringComparer.OrdinalIgnoreCase), DateTimeOffset.UtcNow);
+AssertEqual(-25.0m, firstSync.PriceDiffs[sampleFastModel.Id].PercentChange, "Price drop computed as -25%");
+AssertEqual(0, firstSync.NewOpenRouterIds.Count, "First sync seeds known IDs without flooding NEW badges");
+AssertEqual(2, firstSync.UpdatedKnownOpenRouterIds.Count, "First sync records all seen OpenRouter IDs");
+
+// Subsequent sync with new model
+var candidates2 = candidates.Concat(new[] {
+    new OpenRouterModelCandidate("meta-llama/llama-4-maverick", "Llama 4 Maverick", "Meta-llama", 0.20m, 0.60m, null, 1_000_000)
+}).ToList();
+CatalogDiffResult secondSync = CatalogDiffCalculator.ComputeDiffs(
+    prevModels, currModels, candidates2, priorPrices, firstSync.UpdatedKnownOpenRouterIds, DateTimeOffset.UtcNow);
+AssertTrue(secondSync.NewOpenRouterIds.Contains("meta-llama/llama-4-maverick"), "Subsequent sync flags unseen OpenRouter ID as NEW");
+
+// Zero-price to paid transition
+var freePrior = new Dictionary<string, PriceSnapshot>(StringComparer.OrdinalIgnoreCase)
+{
+    [sampleFastModel.Id] = new PriceSnapshot(0m, 0m, null)
+};
+CatalogDiffResult freeToPaid = CatalogDiffCalculator.ComputeDiffs(
+    prevModels, currModels, candidates2, freePrior, firstSync.UpdatedKnownOpenRouterIds, DateTimeOffset.UtcNow);
+AssertEqual(100.0m, freeToPaid.PriceDiffs[sampleFastModel.Id].PercentChange, "Zero-to-paid transition returns +100% without DivideByZeroException");
+
+// Task 4 (Price Diffs & Add Models): HudViewModel + ModelRowViewModel integration
+string vmPrefsPath = Path.Combine(Path.GetTempPath(), $"apw-vm-prefs-{Guid.NewGuid():N}.json");
+string vmSnapPath = Path.Combine(Path.GetTempPath(), $"apw-vm-snap-{Guid.NewGuid():N}.json");
+try
+{
+    var snapStore = new SyncSnapshotStore(vmSnapPath);
+    var prefStore = new UserPreferencesStore(vmPrefsPath);
+    var vmCatalog = PricingCatalogService.LoadDefault();
+    var vm = new HudViewModel(vmCatalog, prefStore, snapStore);
+    vm.SelectedProvider = "All";
+    vm.SelectedTier = null;
+
+    // Seed first sync via HttpClient
+    string syncPayload1 = """
+    {
+      "data": [
+        {
+          "id": "anthropic/claude-sonnet-4.6",
+          "name": "Anthropic: Claude Sonnet 4.6",
+          "context_length": 200000,
+          "pricing": { "prompt": "0.000003", "completion": "0.000015" }
+        },
+        {
+          "id": "mistralai/mistral-large-2512",
+          "name": "Mistral Large",
+          "context_length": 131072,
+          "pricing": { "prompt": "0.000002", "completion": "0.000006" }
+        }
+      ]
+    }
+    """;
+    using var client1 = new HttpClient(new StubHttpMessageHandler(req =>
+    {
+        if (req.RequestUri?.Host.Contains("cursor.com", StringComparison.OrdinalIgnoreCase) == true)
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(syncPayload1, Encoding.UTF8, "application/json") };
+    }));
+    await vm.SyncLivePricesAsync(client1);
+    AssertEqual(0, vm.NewOpenRouterCount, "First sync seeds known OpenRouter IDs without NEW flood");
+    AssertTrue(vm.AddOpenRouterModel("mistralai/mistral-large-2512"), "AddOpenRouterModel adds unseen candidate");
+    AssertTrue(!vm.AddOpenRouterModel("anthropic/claude-sonnet-4.6"), "AddOpenRouterModel blocks duplicate bundled model");
+    var addedRow = vm.VisibleModels.First(r => r.Id == "mistralai/mistral-large-2512");
+    AssertTrue(addedRow.IsUserAdded, "Added row marked IsUserAdded");
+    AssertEqual("N/A", addedRow.ScoreDisplay, "Added row has N/A AAII score");
+    AssertEqual("N/A", addedRow.FastInOutDisplay, "Added row has N/A Fast pricing");
+
+    // Second sync with price drop + new model
+    string syncPayload2 = """
+    {
+      "data": [
+        {
+          "id": "anthropic/claude-sonnet-4.6",
+          "name": "Anthropic: Claude Sonnet 4.6",
+          "context_length": 200000,
+          "pricing": { "prompt": "0.0000024", "completion": "0.000012" }
+        },
+        {
+          "id": "mistralai/mistral-large-2512",
+          "name": "Mistral Large",
+          "context_length": 131072,
+          "pricing": { "prompt": "0.000001", "completion": "0.000003" }
+        },
+        {
+          "id": "cohere/command-a",
+          "name": "Command A",
+          "context_length": 256000,
+          "pricing": { "prompt": "0.0000025", "completion": "0.00001" }
+        }
+      ]
+    }
+    """;
+    using var client2 = new HttpClient(new StubHttpMessageHandler(req =>
+    {
+        if (req.RequestUri?.Host.Contains("cursor.com", StringComparison.OrdinalIgnoreCase) == true)
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(syncPayload2, Encoding.UTF8, "application/json") };
+    }));
+    await vm.SyncLivePricesAsync(client2);
+    AssertEqual(1, vm.NewOpenRouterCount, "Second sync detects 1 new OpenRouter model");
+    var changedMistral = vm.VisibleModels.First(r => r.Id == "mistralai/mistral-large-2512");
+    AssertTrue(changedMistral.HasPriceDiff && changedMistral.IsPriceDrop, "Price drop flagged on row");
+    AssertEqual("↓ -50%", changedMistral.PriceDiffBadge, "PriceDiffBadge formats drop percentage");
+
+    // Restart simulation: new HudViewModel loads AddedModels & ActivePriceDiffs from SyncSnapshotStore
+    var restartedVm = new HudViewModel(PricingCatalogService.LoadDefault(), prefStore, new SyncSnapshotStore(vmSnapPath));
+    restartedVm.SelectedProvider = "All";
+    restartedVm.SelectedTier = null;
+    var restoredMistral = restartedVm.VisibleModels.FirstOrDefault(r => r.Id == "mistralai/mistral-large-2512");
+    AssertTrue(restoredMistral is not null && restoredMistral.HasPriceDiff, "Added model and price diff survive restart");
+
+    restartedVm.ClearPriceDiffs();
+    AssertTrue(!restartedVm.HasPriceDiffs, "ClearPriceDiffs clears active diffs");
+    AssertTrue(restartedVm.RemoveAddedModel("mistralai/mistral-large-2512"), "RemoveAddedModel removes user-added model");
+    AssertTrue(restartedVm.VisibleModels.All(r => r.Id != "mistralai/mistral-large-2512"), "Removed model no longer visible");
+}
+finally
+{
+    if (File.Exists(vmPrefsPath)) File.Delete(vmPrefsPath);
+    if (File.Exists(vmSnapPath)) File.Delete(vmSnapPath);
+}
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler

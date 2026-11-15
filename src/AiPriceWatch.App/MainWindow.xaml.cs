@@ -248,6 +248,41 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RowRemoveButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string modelId })
+        {
+            _viewModel.RemoveAddedModel(modelId);
+        }
+    }
+
+    private void AddModelsButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsPanel.Visibility = Visibility.Collapsed;
+        _viewModel.IsAddModelsOpen = !_viewModel.IsAddModelsOpen;
+    }
+
+    private void CloseAddModelsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.IsAddModelsOpen = false;
+    }
+
+    private void CandidateActionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string fullId })
+        {
+            if (!_viewModel.AddOpenRouterModel(fullId))
+            {
+                _viewModel.RemoveAddedModel(fullId);
+            }
+        }
+    }
+
+    private void ClearDiffsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.ClearPriceDiffs();
+    }
+
     private void ToggleShowHiddenButton_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.ShowHiddenModels = !_viewModel.ShowHiddenModels;
@@ -499,6 +534,13 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Escape)
         {
+            if (_viewModel.IsAddModelsOpen)
+            {
+                _viewModel.IsAddModelsOpen = false;
+                e.Handled = true;
+                return;
+            }
+
             if (SettingsPanel.Visibility == Visibility.Visible)
             {
                 SettingsPanel.Visibility = Visibility.Collapsed;

@@ -128,6 +128,36 @@
                                 AutomationProperties.Name="Toggle Always on Top"
                                 ToolTip="Toggle Always-on-Top window pin" />
 
+                        <Button x:Name="AddModelsButton"
+                                Click="AddModelsButton_Click"
+                                Padding="7,2"
+                                Margin="0,0,6,0"
+                                FontSize="10"
+                                FontWeight="SemiBold"
+                                Foreground="#58A6FF"
+                                Background="#1F242C"
+                                BorderBrush="#30363D"
+                                Cursor="Hand"
+                                AutomationProperties.Name="Browse and add OpenRouter models"
+                                ToolTip="Browse and add models from the OpenRouter live feed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="+ ADD" VerticalAlignment="Center" />
+                                <Border Background="#223FB950"
+                                        BorderBrush="#3FB950"
+                                        BorderThickness="1"
+                                        CornerRadius="3"
+                                        Padding="4,0"
+                                        Margin="5,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding HasNewOpenRouterModels, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Foreground="#3FB950" FontSize="8.5" FontWeight="Bold">
+                                        <Run Text="{Binding NewOpenRouterCount, Mode=OneWay}" />
+                                        <Run Text=" NEW" />
+                                    </TextBlock>
+                                </Border>
+                            </StackPanel>
+                        </Button>
+
                         <Button x:Name="SyncButton"
                                 Content="SYNC LIVE"
                                 Click="SyncButton_Click"
@@ -437,6 +467,34 @@
                                                            FontSize="8.5"
                                                            FontWeight="Bold" />
                                             </Border>
+                                            <Border Background="#223FB950"
+                                                    BorderBrush="#3FB950"
+                                                    BorderThickness="1"
+                                                    CornerRadius="3"
+                                                    Padding="4,0"
+                                                    Margin="6,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    ToolTip="{Binding PriceDiffTooltip}"
+                                                    Visibility="{Binding IsPriceDrop, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="{Binding PriceDiffBadge}"
+                                                           Foreground="#3FB950"
+                                                           FontSize="8.5"
+                                                           FontWeight="Bold" />
+                                            </Border>
+                                            <Border Background="#22D29922"
+                                                    BorderBrush="#D29922"
+                                                    BorderThickness="1"
+                                                    CornerRadius="3"
+                                                    Padding="4,0"
+                                                    Margin="6,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    ToolTip="{Binding PriceDiffTooltip}"
+                                                    Visibility="{Binding IsPriceIncrease, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="{Binding PriceDiffBadge}"
+                                                           Foreground="#D29922"
+                                                           FontSize="8.5"
+                                                           FontWeight="Bold" />
+                                            </Border>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
                                             <TextBlock Text="{Binding Provider}"
@@ -534,21 +592,33 @@
                                                VerticalAlignment="Center"
                                                TextAlignment="Right" />
 
-                                    <!-- Hide / Unhide Row Action -->
-                                    <Button Grid.Column="8"
-                                            Content="{Binding HideActionLabel}"
-                                            Tag="{Binding Id}"
-                                            Click="RowHideButton_Click"
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Center"
-                                            Padding="5,2"
-                                            FontSize="9"
-                                            FontWeight="SemiBold"
-                                            Foreground="#8B949E"
-                                            Background="#161B22"
-                                            BorderBrush="#30363D"
-                                            Cursor="Hand"
-                                            ToolTip="{Binding HideActionTooltip}" />
+                                    <!-- Hide / Unhide & Remove Row Actions -->
+                                    <StackPanel Grid.Column="8" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <Button Content="DEL"
+                                                Tag="{Binding Id}"
+                                                Click="RowRemoveButton_Click"
+                                                Visibility="{Binding IsUserAdded, Converter={StaticResource BoolToVis}}"
+                                                Margin="0,0,4,0"
+                                                Padding="4,2"
+                                                FontSize="8.5"
+                                                FontWeight="SemiBold"
+                                                Foreground="#F85149"
+                                                Background="#161B22"
+                                                BorderBrush="#30363D"
+                                                Cursor="Hand"
+                                                ToolTip="Remove this user-added OpenRouter model" />
+                                        <Button Content="{Binding HideActionLabel}"
+                                                Tag="{Binding Id}"
+                                                Click="RowHideButton_Click"
+                                                Padding="5,2"
+                                                FontSize="9"
+                                                FontWeight="SemiBold"
+                                                Foreground="#8B949E"
+                                                Background="#161B22"
+                                                BorderBrush="#30363D"
+                                                Cursor="Hand"
+                                                ToolTip="{Binding HideActionTooltip}" />
+                                    </StackPanel>
                                 </Grid>
                             </Border>
                         </DataTemplate>
@@ -758,6 +828,180 @@
                 </ScrollViewer>
             </Border>
 
+            <!-- Add Models from OpenRouter Drawer -->
+            <Border x:Name="AddModelsOverlay"
+                    Grid.Row="1"
+                    Grid.RowSpan="3"
+                    Margin="16,8,16,8"
+                    Padding="14"
+                    CornerRadius="8"
+                    Background="#F5161B22"
+                    BorderBrush="#4458A6FF"
+                    BorderThickness="1"
+                    Visibility="{Binding IsAddModelsOpen, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="ADD MODELS FROM OPENROUTER"
+                                       Foreground="#58A6FF"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center" />
+                            <Border Background="#223FB950"
+                                    BorderBrush="#3FB950"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Padding="5,1"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding HasNewOpenRouterModels, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Foreground="#3FB950" FontSize="9" FontWeight="Bold">
+                                    <Run Text="{Binding NewOpenRouterCount, Mode=OneWay}" />
+                                    <Run Text=" NEW SINCE LAST SYNC" />
+                                </TextBlock>
+                            </Border>
+                        </StackPanel>
+                        <Button Content="Close (Esc)"
+                                Click="CloseAddModelsButton_Click"
+                                HorizontalAlignment="Right"
+                                Padding="8,3"
+                                FontSize="10"
+                                Foreground="#C9D1D9"
+                                Background="#1F242C"
+                                BorderBrush="#30363D"
+                                Cursor="Hand"
+                                AutomationProperties.Name="Close Add Models" />
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding AddModelsSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="#0D1117"
+                                 Foreground="#E6EDF3"
+                                 BorderBrush="#30363D"
+                                 FontSize="11"
+                                 Padding="8,5"
+                                 Margin="0,0,10,0"
+                                 AutomationProperties.Name="Search OpenRouter models" />
+                        <CheckBox Grid.Column="1"
+                                  Content="New since last sync"
+                                  IsChecked="{Binding OnlyNewCandidates, Mode=TwoWay}"
+                                  Foreground="#C9D1D9"
+                                  FontSize="11"
+                                  VerticalAlignment="Center" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="Click SYNC LIVE in the top bar first to load the OpenRouter model feed."
+                                       Foreground="#8B949E"
+                                       FontSize="11"
+                                       Margin="0,12,0,12"
+                                       HorizontalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding AvailableCandidates.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <ItemsControl ItemsSource="{Binding AvailableCandidates}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#121720"
+                                                BorderBrush="#21262D"
+                                                BorderThickness="1"
+                                                CornerRadius="5"
+                                                Padding="10,7"
+                                                Margin="0,0,0,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="130" />
+                                                    <ColumnDefinition Width="60" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   Foreground="#E6EDF3"
+                                                                   FontSize="11.5"
+                                                                   FontWeight="SemiBold" />
+                                                        <Border Background="#223FB950"
+                                                                BorderBrush="#3FB950"
+                                                                BorderThickness="1"
+                                                                CornerRadius="3"
+                                                                Padding="4,0"
+                                                                Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                Visibility="{Binding IsNew, Converter={StaticResource BoolToVis}}">
+                                                            <TextBlock Text="NEW"
+                                                                       Foreground="#3FB950"
+                                                                       FontSize="8.5"
+                                                                       FontWeight="Bold" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <TextBlock Foreground="#7D8590" FontSize="9.5">
+                                                        <Run Text="{Binding Provider, Mode=OneWay}" />
+                                                        <Run Text=" • " />
+                                                        <Run Text="{Binding FullId, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding InOutDisplay}"
+                                                           Foreground="#C9D1D9"
+                                                           FontSize="11"
+                                                           VerticalAlignment="Center"
+                                                           TextAlignment="Right"
+                                                           Margin="0,0,10,0" />
+
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding ContextDisplay}"
+                                                           Foreground="#8B949E"
+                                                           FontSize="10.5"
+                                                           VerticalAlignment="Center"
+                                                           TextAlignment="Right"
+                                                           Margin="0,0,10,0" />
+
+                                                <Button Grid.Column="3"
+                                                        Content="{Binding ActionLabel}"
+                                                        Tag="{Binding FullId}"
+                                                        IsEnabled="{Binding CanAdd}"
+                                                        Click="CandidateActionButton_Click"
+                                                        Padding="8,3"
+                                                        FontSize="9.5"
+                                                        FontWeight="SemiBold"
+                                                        Foreground="#58A6FF"
+                                                        Background="#1F242C"
+                                                        BorderBrush="#30363D"
+                                                        Cursor="Hand" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
             <!-- Row 4: Interactive Task Cost Estimator & Status Bar -->
             <Border Grid.Row="4"
                     Background="#33161B22"
@@ -821,6 +1065,20 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <Button x:Name="ClearDiffsButton"
+                                Content="Clear diffs"
+                                Click="ClearDiffsButton_Click"
+                                Visibility="{Binding HasPriceDiffs, Converter={StaticResource BoolToVis}}"
+                                Padding="6,1"
+                                Margin="0,0,8,0"
+                                FontSize="9.5"
+                                FontWeight="SemiBold"
+                                Foreground="#8B949E"
+                                Background="#1F242C"
+                                BorderBrush="#30363D"
+                                Cursor="Hand"
+                                AutomationProperties.Name="Clear price diff badges"
+                                ToolTip="Clear active price change badges" />
                         <Button x:Name="RetrySyncButton"
                                 Content="Retry Sync"
                                 Click="SyncButton_Click"
