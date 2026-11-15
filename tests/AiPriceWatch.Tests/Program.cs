@@ -600,6 +600,48 @@ AssertEqual(131072, mistral.ContextTokens, "Candidate context_length parsed");
 AssertEqual(2.00m, mistral.InputPerMillion, "Candidate input price parsed");
 AssertEqual("Google Gemini", OpenRouterPriceParser.MapProviderName("google/gemini-2.5-pro"), "Google slug maps to Google Gemini");
 
+// Task 2 (Price Diffs & Add Models): SyncSnapshotStore atomic persistence & fallback
+string tempSnapshotPath = Path.Combine(Path.GetTempPath(), $"apw-snapshot-{Guid.NewGuid():N}.json");
+try
+{
+    var snapshotStore = new SyncSnapshotStore(tempSnapshotPath);
+    var addedEntry = new ModelPricingEntry(
+        "mistralai/mistral-large-2512", "Mistral Large", "Mistralai", TaskTier.Balanced,
+        2.00m, null, 6.00m, 131072, "Added from OpenRouter", OpenRouterId: "mistralai/mistral-large-2512");
+    var snap = new SyncSnapshot
+    {
+        LastSyncedAt = DateTimeOffset.UtcNow,
+        KnownOpenRouterIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "mistralai/mistral-large-2512" },
+        LastPricesByModelId = new Dictionary<string, PriceSnapshot>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["claude-sonnet-4.6"] = new PriceSnapshot(3.00m, 15.00m, 0.30m)
+        },
+        AddedModels = new List<ModelPricingEntry> { addedEntry },
+        ActivePriceDiffs = new Dictionary<string, PriceDiff>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["claude-sonnet-4.6"] = new PriceDiff(4.00m, 20.00m, 3.00m, 15.00m, -25.0m, DateTimeOffset.UtcNow)
+        }
+    };
+    snapshotStore.Save(snap);
+    SyncSnapshot loadedSnap = snapshotStore.Load();
+    AssertEqual(1, loadedSnap.AddedModels.Count, "SyncSnapshotStore round-trips AddedModels");
+    AssertTrue(loadedSnap.KnownOpenRouterIds.Contains("MISTRALAI/MISTRAL-LARGE-2512"), "KnownOpenRouterIds comparer is case-insensitive");
+    AssertEqual(-25.0m, loadedSnap.ActivePriceDiffs["claude-sonnet-4.6"].PercentChange, "ActivePriceDiffs round-tripped");
+
+    snapshotStore.ClearDiffs();
+    SyncSnapshot afterClear = snapshotStore.Load();
+    AssertEqual(0, afterClear.ActivePriceDiffs.Count, "ClearDiffs clears ActivePriceDiffs");
+    AssertEqual(1, afterClear.AddedModels.Count, "ClearDiffs preserves AddedModels");
+
+    File.WriteAllText(tempSnapshotPath, "{ invalid json");
+    SyncSnapshot corruptFallback = snapshotStore.Load();
+    AssertEqual(0, corruptFallback.AddedModels.Count, "Corrupt snapshot returns empty SyncSnapshot");
+}
+finally
+{
+    if (File.Exists(tempSnapshotPath)) File.Delete(tempSnapshotPath);
+}
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
