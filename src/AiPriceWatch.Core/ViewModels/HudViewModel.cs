@@ -21,6 +21,19 @@ public enum SyncStatus
     Failed = 3
 }
 
+public sealed record OpenRouterCandidateViewModel(
+    string FullId,
+    string Name,
+    string Provider,
+    string InOutDisplay,
+    string ContextDisplay,
+    bool IsNew,
+    bool IsAdded,
+    bool CanAdd)
+{
+    public string ActionLabel => IsAdded ? "REMOVE" : "ADD";
+}
+
 public sealed class HudViewModel : INotifyPropertyChanged
 {
     private const double MinOpacity = 0.35;
@@ -29,7 +42,19 @@ public sealed class HudViewModel : INotifyPropertyChanged
 
     private readonly PricingCatalogService _catalog;
     private readonly UserPreferencesStore _preferencesStore;
+    private readonly SyncSnapshotStore _snapshotStore;
+    private readonly HashSet<string> _bundledModelKeys;
     private readonly HashSet<string> _hiddenModelIds;
+    private readonly HashSet<string> _addedModelIds = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, PriceDiff> _activePriceDiffs = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, PriceSnapshot> _lastPriceSnapshots = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _knownOpenRouterIds = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _newOpenRouterIds = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyList<OpenRouterModelCandidate> _availableOpenRouterModels = Array.Empty<OpenRouterModelCandidate>();
+    private bool _isAddModelsOpen;
+    private string _addModelsSearchText = string.Empty;
+    private bool _onlyNewCandidates;
+    private DateTimeOffset? _snapshotLastSyncedAt;
     private string _selectedProvider = "All";
     private TaskTier? _selectedTier;
     private string _searchText = string.Empty;
@@ -54,13 +79,29 @@ public sealed class HudViewModel : INotifyPropertyChanged
     private bool _startWithWindows;
     private IReadOnlyList<ModelRowViewModel> _visibleModels = Array.Empty<ModelRowViewModel>();
 
-    public HudViewModel(PricingCatalogService catalog, UserPreferencesStore? preferencesStore = null)
+    public HudViewModel(
+        PricingCatalogService catalog,
+        UserPreferencesStore? preferencesStore = null,
+        SyncSnapshotStore? snapshotStore = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         _catalog = catalog;
         _preferencesStore = preferencesStore ?? new UserPreferencesStore();
+        _snapshotStore = snapshotStore ?? new SyncSnapshotStore();
         UserPreferences prefs = _preferencesStore.Load();
         _hiddenModelIds = new HashSet<string>(prefs.HiddenModelIds, StringComparer.OrdinalIgnoreCase);
+
+        _bundledModelKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (ModelPricingEntry entry in _catalog.AllModels)
+        {
+            _bundledModelKeys.Add(entry.Id);
+            if (!string.IsNullOrWhiteSpace(entry.OpenRouterId))
+            {
+                _bundledModelKeys.Add(entry.OpenRouterId);
+            }
+        }
+
+        LoadSnapshotIntoCatalog();
 
         var providerList = new List<string> { "All" };
         providerList.AddRange(_catalog.GetProviders());
@@ -106,6 +147,98 @@ public sealed class HudViewModel : INotifyPropertyChanged
     public int HiddenCount => _hiddenModelIds.Count;
 
     public bool HasHiddenModels => _hiddenModelIds.Count > 0;
+
+    public int NewOpenRouterCount => _newOpenRouterIds.Count;
+
+    public bool HasNewOpenRouterModels => _newOpenRouterIds.Count > 0;
+
+    public bool HasPriceDiffs => _activePriceDiffs.Count > 0;
+
+    public bool IsAddModelsOpen
+    {
+        get => _isAddModelsOpen;
+        set
+        {
+            if (_isAddModelsOpen != value)
+            {
+                _isAddModelsOpen = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public string AddModelsSearchText
+    {
+        get => _addModelsSearchText;
+        set
+        {
+            string next = value ?? string.Empty;
+            if (!string.Equals(_addModelsSearchText, next, StringComparison.Ordinal))
+            {
+                _addModelsSearchText = next;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(AvailableCandidates));
+            }
+        }
+    }
+
+    public bool OnlyNewCandidates
+    {
+        get => _onlyNewCandidates;
+        set
+        {
+            if (_onlyNewCandidates != value)
+            {
+                _onlyNewCandidates = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(AvailableCandidates));
+            }
+        }
+    }
+
+    public IReadOnlyList<OpenRouterCandidateViewModel> AvailableCandidates
+    {
+        get
+        {
+            if (_availableOpenRouterModels.Count == 0)
+            {
+                return Array.Empty<OpenRouterCandidateViewModel>();
+            }
+
+            string search = _addModelsSearchText.Trim();
+            IEnumerable<OpenRouterModelCandidate> query = _availableOpenRouterModels;
+            if (_onlyNewCandidates)
+            {
+                query = query.Where(c => _newOpenRouterIds.Contains(c.FullId));
+            }
+
+            if (!string.IsNullOrEmpty(search))
+            {
+                query = query.Where(c =>
+                    c.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    c.FullId.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    c.Provider.Contains(search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return query
+                .Take(100)
+                .Select(c =>
+                {
+                    bool isBundled = _bundledModelKeys.Contains(c.FullId);
+                    bool isAdded = _addedModelIds.Contains(c.FullId);
+                    return new OpenRouterCandidateViewModel(
+                        FullId: c.FullId,
+                        Name: c.Name,
+                        Provider: c.Provider,
+                        InOutDisplay: TaskCostCalculator.FormatInOutPair(c.InputPerMillion, c.OutputPerMillion),
+                        ContextDisplay: c.ContextTokens > 0 ? TaskCostCalculator.FormatContextWindow(c.ContextTokens) : "—",
+                        IsNew: _newOpenRouterIds.Contains(c.FullId),
+                        IsAdded: isAdded,
+                        CanAdd: !isBundled);
+                })
+                .ToList();
+        }
+    }
 
     public string HiddenToggleLabel => _showHiddenModels
         ? $"HIDE ({_hiddenModelIds.Count})"
@@ -513,6 +646,7 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 "text/html",
                 timeoutCts.Token);
 
+            IReadOnlyList<ModelPricingEntry> previousCatalogSnapshot = _catalog.AllModels.ToList();
             string json = await openRouterTask;
 
             OpenRouterSyncResult result = OpenRouterPriceParser.MergeLivePricesDetailed(_catalog.AllModels, json);
@@ -551,18 +685,39 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 mergedModels = cbResult.Models;
             }
 
+            DateTimeOffset syncedNow = DateTimeOffset.Now;
+            CatalogDiffResult diffResult = CatalogDiffCalculator.ComputeDiffs(
+                previousCatalogSnapshot,
+                mergedModels,
+                result.AvailableModels,
+                _lastPriceSnapshots,
+                _knownOpenRouterIds,
+                syncedNow);
+
             _catalog.MergeEntries(mergedModels);
+            _availableOpenRouterModels = result.AvailableModels;
+            _knownOpenRouterIds = diffResult.UpdatedKnownOpenRouterIds;
+            _newOpenRouterIds = diffResult.NewOpenRouterIds;
+            _lastPriceSnapshots = diffResult.UpdatedPriceSnapshots;
+            _activePriceDiffs = diffResult.PriceDiffs;
+            _snapshotLastSyncedAt = syncedNow;
+            SaveSnapshot();
+
             DataOrigin = CatalogDataOrigin.LiveSynced;
             SyncStatus = SyncStatus.Succeeded;
-            LastSuccessfulSyncAt = DateTimeOffset.Now;
+            LastSuccessfulSyncAt = syncedNow;
             LastSyncError = null;
             LastSyncMatchedCount = result.UpdatedCount;
             LastSyncIgnoredCount = result.IgnoredCount;
+            NotifyDiffAndCandidateChanges();
             RefreshVisibleModels();
+
             string cbSuffix = cbResult is { IsValidPayload: true }
                 ? $", {cbResult.UpdatedCount} CursorBench"
                 : " • CursorBench unchanged";
-            StatusText = $"Live sync OK • {result.UpdatedCount} prices{cbSuffix} ({LastSuccessfulSyncAt.Value:HH:mm})";
+            string diffSuffix = _activePriceDiffs.Count > 0 ? $" • {_activePriceDiffs.Count} changed" : string.Empty;
+            string newSuffix = _newOpenRouterIds.Count > 0 ? $" • {_newOpenRouterIds.Count} new" : string.Empty;
+            StatusText = $"Live sync OK • {result.UpdatedCount} prices{cbSuffix}{diffSuffix}{newSuffix} ({LastSuccessfulSyncAt.Value:HH:mm})";
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -631,6 +786,158 @@ public sealed class HudViewModel : INotifyPropertyChanged
         CatalogDataOrigin.LastValid => $"last valid sync ({LastSuccessfulSyncAt?.ToString("HH:mm") ?? "prior"})",
         _ => "bundled data"
     };
+
+    public bool AddOpenRouterModel(string fullId)
+    {
+        if (string.IsNullOrWhiteSpace(fullId))
+        {
+            return false;
+        }
+
+        string trimmedId = fullId.Trim();
+        if (_bundledModelKeys.Contains(trimmedId) || _addedModelIds.Contains(trimmedId))
+        {
+            return false;
+        }
+
+        OpenRouterModelCandidate? candidate = _availableOpenRouterModels
+            .FirstOrDefault(c => string.Equals(c.FullId, trimmedId, StringComparison.OrdinalIgnoreCase));
+        if (candidate is null)
+        {
+            return false;
+        }
+
+        var provenance = new FieldProvenance(
+            SourceName: "OpenRouter API",
+            SourceUrl: "https://openrouter.ai/api/v1/models",
+            SourceType: PriceSourceType.OpenRouter,
+            LastVerifiedAt: _snapshotLastSyncedAt ?? DateTimeOffset.UtcNow,
+            Status: DataVerificationStatus.Verified);
+
+        var entry = new ModelPricingEntry(
+            Id: candidate.FullId,
+            Name: candidate.Name,
+            Provider: candidate.Provider,
+            Tier: TaskTier.Balanced,
+            InputPerMillion: candidate.InputPerMillion,
+            CachedInputPerMillion: candidate.CachedInputPerMillion,
+            OutputPerMillion: candidate.OutputPerMillion,
+            ContextTokens: candidate.ContextTokens,
+            Notes: "Added from OpenRouter live feed.",
+            FastInputPerMillion: null,
+            FastOutputPerMillion: null,
+            IntelligenceScore: null,
+            OpenRouterId: candidate.FullId,
+            PricingSource: provenance,
+            CachedPricingSource: candidate.CachedInputPerMillion.HasValue ? provenance : null);
+
+        var updated = _catalog.AllModels.ToList();
+        updated.Add(entry);
+        _catalog.MergeEntries(updated);
+        _addedModelIds.Add(entry.Id);
+        _lastPriceSnapshots[entry.Id] = new PriceSnapshot(
+            entry.InputPerMillion,
+            entry.OutputPerMillion,
+            entry.CachedInputPerMillion);
+
+        SaveSnapshot();
+        NotifyDiffAndCandidateChanges();
+        RefreshVisibleModels();
+        return true;
+    }
+
+    public bool RemoveAddedModel(string modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            return false;
+        }
+
+        string trimmedId = modelId.Trim();
+        if (!_addedModelIds.Remove(trimmedId))
+        {
+            return false;
+        }
+
+        var remaining = _catalog.AllModels
+            .Where(m => !string.Equals(m.Id, trimmedId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        _catalog.MergeEntries(remaining);
+        _activePriceDiffs.Remove(trimmedId);
+        _lastPriceSnapshots.Remove(trimmedId);
+
+        SaveSnapshot();
+        NotifyDiffAndCandidateChanges();
+        RefreshVisibleModels();
+        return true;
+    }
+
+    public void ClearPriceDiffs()
+    {
+        if (_activePriceDiffs.Count == 0)
+        {
+            return;
+        }
+
+        _activePriceDiffs.Clear();
+        _snapshotStore.ClearDiffs();
+        OnPropertyChanged(nameof(HasPriceDiffs));
+        RefreshVisibleModels();
+    }
+
+    private void LoadSnapshotIntoCatalog()
+    {
+        SyncSnapshot snapshot = _snapshotStore.Load();
+        _snapshotLastSyncedAt = snapshot.LastSyncedAt;
+        _knownOpenRouterIds = snapshot.KnownOpenRouterIds;
+        _lastPriceSnapshots = snapshot.LastPricesByModelId;
+        _activePriceDiffs = snapshot.ActivePriceDiffs;
+
+        if (snapshot.AddedModels.Count > 0)
+        {
+            var merged = _catalog.AllModels.ToList();
+            foreach (ModelPricingEntry added in snapshot.AddedModels)
+            {
+                if (_bundledModelKeys.Contains(added.Id) ||
+                    (!string.IsNullOrWhiteSpace(added.OpenRouterId) && _bundledModelKeys.Contains(added.OpenRouterId)))
+                {
+                    continue;
+                }
+
+                if (_addedModelIds.Add(added.Id))
+                {
+                    merged.Add(added);
+                }
+            }
+
+            _catalog.MergeEntries(merged);
+        }
+    }
+
+    private void SaveSnapshot()
+    {
+        List<ModelPricingEntry> addedModels = _catalog.AllModels
+            .Where(m => _addedModelIds.Contains(m.Id))
+            .ToList();
+
+        _snapshotStore.Save(new SyncSnapshot
+        {
+            SchemaVersion = 1,
+            LastSyncedAt = _snapshotLastSyncedAt,
+            KnownOpenRouterIds = _knownOpenRouterIds,
+            LastPricesByModelId = _lastPriceSnapshots,
+            AddedModels = addedModels,
+            ActivePriceDiffs = _activePriceDiffs
+        });
+    }
+
+    private void NotifyDiffAndCandidateChanges()
+    {
+        OnPropertyChanged(nameof(NewOpenRouterCount));
+        OnPropertyChanged(nameof(HasNewOpenRouterModels));
+        OnPropertyChanged(nameof(HasPriceDiffs));
+        OnPropertyChanged(nameof(AvailableCandidates));
+    }
 
     private void SavePreferences()
     {
@@ -712,6 +1019,9 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 cheapestAssigned = true;
             }
 
+            _activePriceDiffs.TryGetValue(entry.Id, out PriceDiff? diff);
+            bool isUserAdded = _addedModelIds.Contains(entry.Id);
+
             rows.Add(new ModelRowViewModel(
                 entry,
                 _taskInputTokens,
@@ -719,7 +1029,9 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 _taskOutputTokens,
                 isCheapest,
                 _isFastMode,
-                isHidden));
+                isHidden,
+                diff,
+                isUserAdded));
         }
 
         VisibleModels = rows;

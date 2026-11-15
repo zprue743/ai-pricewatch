@@ -1,3 +1,4 @@
+using System.Globalization;
 using AiPriceWatch.Core.Models;
 using AiPriceWatch.Core.Services;
 
@@ -12,7 +13,9 @@ public sealed class ModelRowViewModel
         int taskOutputTokens,
         bool isCheapestInView,
         bool isFastMode = false,
-        bool isHidden = false)
+        bool isHidden = false,
+        PriceDiff? priceDiff = null,
+        bool isUserAdded = false)
     {
         ArgumentNullException.ThrowIfNull(entry);
         Id = entry.Id;
@@ -77,6 +80,23 @@ public sealed class ModelRowViewModel
         IsCheapestInView = isCheapestInView;
         IsFastModeActive = isFastMode;
         IsHidden = isHidden;
+        IsUserAdded = isUserAdded;
+
+        if (priceDiff is not null)
+        {
+            HasPriceDiff = true;
+            IsPriceDrop = priceDiff.PercentChange < 0m;
+            IsPriceIncrease = priceDiff.PercentChange > 0m;
+            PriceDiffBadge = priceDiff.PercentChange < 0m
+                ? string.Create(CultureInfo.InvariantCulture, $"↓ {priceDiff.PercentChange:0.#}%")
+                : string.Create(CultureInfo.InvariantCulture, $"↑ +{priceDiff.PercentChange:0.#}%");
+            PriceDiffTooltip = $"Input: {TaskCostCalculator.FormatPricePerMillion(priceDiff.PreviousInputPerMillion)} → {TaskCostCalculator.FormatPricePerMillion(priceDiff.NewInputPerMillion)} | Output: {TaskCostCalculator.FormatPricePerMillion(priceDiff.PreviousOutputPerMillion)} → {TaskCostCalculator.FormatPricePerMillion(priceDiff.NewOutputPerMillion)}";
+        }
+        else
+        {
+            PriceDiffBadge = string.Empty;
+            PriceDiffTooltip = string.Empty;
+        }
     }
 
     public string Id { get; }
@@ -113,6 +133,12 @@ public sealed class ModelRowViewModel
     public bool IsCheapestInView { get; }
     public bool IsFastModeActive { get; }
     public bool IsHidden { get; }
+    public bool IsUserAdded { get; }
+    public bool HasPriceDiff { get; }
+    public bool IsPriceDrop { get; }
+    public bool IsPriceIncrease { get; }
+    public string PriceDiffBadge { get; }
+    public string PriceDiffTooltip { get; }
     public string HideActionLabel => IsHidden ? "UNHIDE" : "HIDE";
     public string HideActionTooltip => IsHidden
         ? "Unhide this model so it appears in the HUD"
