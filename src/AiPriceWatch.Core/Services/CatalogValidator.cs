@@ -79,6 +79,11 @@ public static class CatalogValidator
                 errors.Add($"Model '{entry.Id}' has out-of-range IntelligenceScore ({entry.IntelligenceScore}).");
             }
 
+            if (entry.CursorBenchScore is < 0m or > 100m)
+            {
+                errors.Add($"Model '{entry.Id}' has out-of-range CursorBenchScore ({entry.CursorBenchScore}).");
+            }
+
             FieldProvenance stdProv = entry.EffectiveStandardProvenance;
             if (stdProv.Status == DataVerificationStatus.Unknown ||
                 string.IsNullOrWhiteSpace(stdProv.SourceName) ||
@@ -118,6 +123,18 @@ public static class CatalogValidator
                     !benchProv.ScoreDate.HasValue)
                 {
                     errors.Add($"Model '{entry.Id}' has IntelligenceScore without complete BenchmarkSource metadata.");
+                }
+            }
+
+            if (entry.CursorBenchScore.HasValue)
+            {
+                BenchmarkProvenance cbProv = entry.EffectiveCursorBenchProvenance;
+                if (cbProv.Status is DataVerificationStatus.Unknown or DataVerificationStatus.Unavailable ||
+                    string.IsNullOrWhiteSpace(cbProv.Publisher) ||
+                    string.IsNullOrWhiteSpace(cbProv.BenchmarkName) ||
+                    !cbProv.ScoreDate.HasValue)
+                {
+                    errors.Add($"Model '{entry.Id}' has CursorBenchScore without complete CursorBenchSource metadata.");
                 }
             }
         }

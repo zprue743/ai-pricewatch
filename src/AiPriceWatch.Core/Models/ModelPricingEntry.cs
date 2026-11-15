@@ -17,7 +17,9 @@ public sealed record ModelPricingEntry(
     FieldProvenance? PricingSource = null,
     FieldProvenance? CachedPricingSource = null,
     FieldProvenance? FastPricingSource = null,
-    BenchmarkProvenance? BenchmarkSource = null)
+    BenchmarkProvenance? BenchmarkSource = null,
+    decimal? CursorBenchScore = null,
+    BenchmarkProvenance? CursorBenchSource = null)
 {
     public FieldProvenance EffectiveStandardProvenance =>
         PricingSource ?? FieldProvenance.Unknown;
@@ -34,6 +36,11 @@ public sealed record ModelPricingEntry(
 
     public BenchmarkProvenance EffectiveBenchmarkProvenance =>
         BenchmarkSource ?? (IntelligenceScore is null
+            ? BenchmarkProvenance.Unavailable
+            : BenchmarkProvenance.Unknown);
+
+    public BenchmarkProvenance EffectiveCursorBenchProvenance =>
+        CursorBenchSource ?? (CursorBenchScore is null
             ? BenchmarkProvenance.Unavailable
             : BenchmarkProvenance.Unknown);
 }

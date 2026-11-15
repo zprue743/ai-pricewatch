@@ -428,6 +428,141 @@ finally
     if (File.Exists(corruptPrefsPath)) File.Delete(corruptPrefsPath);
 }
 
+// CursorBench: formatting, validation, sorting, and ViewModel display
+AssertEqual("60.4%", TaskCostCalculator.FormatPercentageScore(60.4m), "FormatPercentageScore formats CursorBench score with %");
+AssertEqual("N/A", TaskCostCalculator.FormatPercentageScore(null), "FormatPercentageScore formats null as N/A");
+
+var cbCatalog = PricingCatalogService.LoadDefault();
+var cbModels = cbCatalog.Query(sort: PricingSortField.CursorBenchDesc);
+AssertEqual("gemini-4-carbon", cbModels[0].Id, "CursorBenchDesc sorts highest CursorBench score first (Gemini 4 Carbon 60.4%)");
+AssertEqual((decimal?)60.4m, cbModels[0].CursorBenchScore, "Gemini 4 Carbon has verified CursorBench 4.0 score 60.4");
+
+var cbRowWithScore = new ModelRowViewModel(cbModels[0], 10_000, 0, 2_000, isCheapestInView: false);
+AssertEqual("60.4%", cbRowWithScore.CursorBenchScoreDisplay, "ModelRowViewModel formats CursorBenchScoreDisplay");
+AssertTrue(cbRowWithScore.CursorBenchTooltip.Contains("CursorBench", StringComparison.Ordinal), "ModelRowViewModel includes CursorBench provenance tooltip");
+
+var cbRowWithoutScore = new ModelRowViewModel(
+    cbCatalog.AllModels.First(m => m.CursorBenchScore is null),
+    10_000,
+    0,
+    2_000,
+    isCheapestInView: false);
+AssertEqual("N/A", cbRowWithoutScore.CursorBenchScoreDisplay, "ModelRowViewModel shows N/A when CursorBenchScore is null");
+
+var badCbCatalog = new[]
+{
+    new ModelPricingEntry(
+        "bad-cb",
+        "Bad CB",
+        "OpenAI",
+        TaskTier.Fast,
+        1m,
+        null,
+        2m,
+        128000,
+        "Bad CB",
+        PricingSource: new FieldProvenance("Test", "https://example.com", PriceSourceType.DirectProvider, DateTimeOffset.UtcNow, DataVerificationStatus.Verified),
+        CursorBenchScore: 105m)
+};
+var badCbValidation = CatalogValidator.Validate(badCbCatalog);
+AssertTrue(!badCbValidation.IsValid, "CatalogValidator rejects out-of-range CursorBenchScore");
+AssertTrue(badCbValidation.Errors.Any(e => e.Contains("out-of-range CursorBenchScore", StringComparison.Ordinal)), "CatalogValidator reports out-of-range CursorBenchScore");
+AssertTrue(badCbValidation.Errors.Any(e => e.Contains("without complete CursorBenchSource", StringComparison.Ordinal)), "CatalogValidator reports missing CursorBenchSource");
+
+// CursorBench live sync parser & HudViewModel.SyncLivePricesAsync integration
+const string sampleCursorBenchHtml = """
+    <html><body>
+    <h1>CursorBench 4.1</h1>
+    <table>
+      <tr><td><span class="truncate">Gemini 4 Carbon High</span></td><td>62.5<!-- -->%</td></tr>
+      <tr><td><span class="truncate">Gemini 4 Carbon Low</span></td><td>58.6<!-- -->%</td></tr>
+      <tr><td><span class="truncate">Fable 5.2 Max</span></td><td>61.2<!-- -->%</td></tr>
+      <tr><td><span class="truncate">DeepSeek V4.1 Flash 1017 Max</span></td><td>49.0<!-- -->%</td></tr>
+    </table>
+    </body></html>
+    """;
+
+var cbParsed = CursorBenchParser.MergeLiveScores(cbCatalog.AllModels, sampleCursorBenchHtml);
+AssertTrue(cbParsed.IsValidPayload, "CursorBenchParser accepts valid leaderboard HTML");
+AssertEqual("4.1", cbParsed.BenchmarkVersion, "CursorBenchParser extracts benchmark version");
+AssertEqual(3, cbParsed.UpdatedCount, "CursorBenchParser updates all matched models in sample HTML");
+AssertEqual((decimal?)62.5m, cbParsed.Models.First(m => m.Id == "gemini-4-carbon").CursorBenchScore, "CursorBenchParser picks peak score across effort tiers");
+AssertEqual("4.1 (High)", cbParsed.Models.First(m => m.Id == "gemini-4-carbon").CursorBenchSource?.Version, "CursorBenchParser records effort tier in version");
+AssertEqual((decimal?)49.0m, cbParsed.Models.First(m => m.Id == "deepseek-flash").CursorBenchScore, "CursorBenchParser matches dated model suffix via alias");
+
+string syncPrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-cb-sync-{Guid.NewGuid():N}.json");
+try
+{
+    var cbSyncVm = new HudViewModel(PricingCatalogService.LoadDefault(), new UserPreferencesStore(syncPrefsPath));
+    using var dualClient = new HttpClient(new StubHttpMessageHandler(req =>
+    {
+        if (req.RequestUri?.Host.Contains("cursor.com", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(sampleCursorBenchHtml, Encoding.UTF8, "text/html")
+            };
+        }
+
+        const string openRouterPayload = """
+            {
+              "data": [
+                {
+                  "id": "google/gemini-4-carbon",
+                  "pricing": { "prompt": "0.000004", "completion": "0.00002" }
+                }
+              ]
+            }
+            """;
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(openRouterPayload, Encoding.UTF8, "application/json")
+        };
+    }));
+
+    await cbSyncVm.SyncLivePricesAsync(dualClient);
+    AssertEqual(SyncStatus.Succeeded, cbSyncVm.SyncStatus, "SYNC LIVE succeeds when both OpenRouter and CursorBench respond");
+    AssertTrue(cbSyncVm.StatusText.Contains("CursorBench", StringComparison.Ordinal), "SYNC LIVE status reports CursorBench refresh");
+    var refreshedCarbon = cbSyncVm.VisibleModels.First(m => m.Id == "gemini-4-carbon");
+    AssertEqual("62.5%", refreshedCarbon.CursorBenchScoreDisplay, "SYNC LIVE updates visible CursorBenchScoreDisplay");
+
+    // Safe failure when CursorBench page changes layout or returns HTTP 500
+    var failedCbParse = CursorBenchParser.MergeLiveScores(cbCatalog.AllModels, "<html><body>Redesigned page</body></html>");
+    AssertTrue(!failedCbParse.IsValidPayload, "CursorBenchParser safely rejects redesigned/unparseable HTML");
+
+    using var cbErrorClient = new HttpClient(new StubHttpMessageHandler(req =>
+    {
+        if (req.RequestUri?.Host.Contains("cursor.com", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        }
+
+        const string openRouterPayload = """
+            {
+              "data": [
+                {
+                  "id": "google/gemini-4-carbon",
+                  "pricing": { "prompt": "0.000004", "completion": "0.00002" }
+                }
+              ]
+            }
+            """;
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(openRouterPayload, Encoding.UTF8, "application/json")
+        };
+    }));
+
+    await cbSyncVm.SyncLivePricesAsync(cbErrorClient);
+    AssertEqual(SyncStatus.Succeeded, cbSyncVm.SyncStatus, "SYNC LIVE still succeeds when CursorBench fails");
+    AssertTrue(cbSyncVm.StatusText.Contains("CursorBench unchanged", StringComparison.Ordinal), "SYNC LIVE reports CursorBench unchanged on scrape failure");
+    AssertEqual("62.5%", cbSyncVm.VisibleModels.First(m => m.Id == "gemini-4-carbon").CursorBenchScoreDisplay, "Existing CursorBench score is preserved when CursorBench fails");
+}
+finally
+{
+    if (File.Exists(syncPrefsPath)) File.Delete(syncPrefsPath);
+}
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler

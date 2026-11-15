@@ -30,6 +30,8 @@ public sealed class ModelRowViewModel
 
         ScoreRaw = entry.IntelligenceScore;
         ScoreDisplay = TaskCostCalculator.FormatScore(entry.IntelligenceScore);
+        CursorBenchScoreRaw = entry.CursorBenchScore;
+        CursorBenchScoreDisplay = TaskCostCalculator.FormatPercentageScore(entry.CursorBenchScore);
 
         InputPriceDisplay = TaskCostCalculator.FormatPricePerMillion(entry.InputPerMillion);
         CachedPriceDisplay = TaskCostCalculator.FormatPricePerMillion(entry.CachedInputPerMillion);
@@ -53,6 +55,7 @@ public sealed class ModelRowViewModel
         CachedProvenance = entry.EffectiveCachedProvenance;
         FastProvenance = entry.EffectiveFastProvenance;
         BenchmarkProvenance = entry.EffectiveBenchmarkProvenance;
+        CursorBenchProvenance = entry.EffectiveCursorBenchProvenance;
 
         PricingSourceBadge = StandardProvenance.SourceType switch
         {
@@ -66,9 +69,10 @@ public sealed class ModelRowViewModel
         CachedPricingTooltip = $"Cached: {CachedProvenance.FormatSummary()}";
         FastPricingTooltip = $"Fast/Priority: {FastProvenance.FormatSummary()}";
         BenchmarkTooltip = BenchmarkProvenance.FormatSummary();
+        CursorBenchTooltip = CursorBenchProvenance.FormatSummary();
         RowDetailsTooltip = string.IsNullOrWhiteSpace(entry.Notes)
-            ? $"{StandardPricingTooltip}\n{CachedPricingTooltip}\n{FastPricingTooltip}\nBenchmark: {BenchmarkTooltip}"
-            : $"{entry.Notes}\n\n{StandardPricingTooltip}\n{CachedPricingTooltip}\n{FastPricingTooltip}\nBenchmark: {BenchmarkTooltip}";
+            ? $"{StandardPricingTooltip}\n{CachedPricingTooltip}\n{FastPricingTooltip}\nAAII Benchmark: {BenchmarkTooltip}\nCursorBench: {CursorBenchTooltip}"
+            : $"{entry.Notes}\n\n{StandardPricingTooltip}\n{CachedPricingTooltip}\n{FastPricingTooltip}\nAAII Benchmark: {BenchmarkTooltip}\nCursorBench: {CursorBenchTooltip}";
 
         IsCheapestInView = isCheapestInView;
         IsFastModeActive = isFastMode;
@@ -83,6 +87,8 @@ public sealed class ModelRowViewModel
     public string TierBadge { get; }
     public decimal? ScoreRaw { get; }
     public string ScoreDisplay { get; }
+    public decimal? CursorBenchScoreRaw { get; }
+    public string CursorBenchScoreDisplay { get; }
     public string InputPriceDisplay { get; }
     public string CachedPriceDisplay { get; }
     public string OutputPriceDisplay { get; }
@@ -96,11 +102,13 @@ public sealed class ModelRowViewModel
     public FieldProvenance CachedProvenance { get; }
     public FieldProvenance FastProvenance { get; }
     public BenchmarkProvenance BenchmarkProvenance { get; }
+    public BenchmarkProvenance CursorBenchProvenance { get; }
     public string PricingSourceBadge { get; }
     public string StandardPricingTooltip { get; }
     public string CachedPricingTooltip { get; }
     public string FastPricingTooltip { get; }
     public string BenchmarkTooltip { get; }
+    public string CursorBenchTooltip { get; }
     public string RowDetailsTooltip { get; }
     public bool IsCheapestInView { get; }
     public bool IsFastModeActive { get; }
