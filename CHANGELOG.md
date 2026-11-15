@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/zprue743/ai-pricewatch/compare/v0.2.0...v0.3.0) (2026-11-15)
+
+
+### Features
+
+* add CursorBench 4.0 scores and live sync ([e8e6a5a](https://github.com/zprue743/ai-pricewatch/commit/e8e6a5a5ca983a5a78055675df0d09346f25748b))
+* add CursorBench 4.0 scores and live sync ([e97e1bb](https://github.com/zprue743/ai-pricewatch/commit/e97e1bbbbc2821337d538230432b1eed1f8fa4b6))
+
 ## [0.2.0](https://github.com/zprue743/ai-pricewatch/compare/v0.1.0...v0.2.0) (2026-11-14)
 
 
