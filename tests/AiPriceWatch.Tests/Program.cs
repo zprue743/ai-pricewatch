@@ -571,6 +571,35 @@ AssertEqual("v0.1.0", AppVersionInfo.FormatDisplayVersion("  ", new Version(0, 1
 AssertEqual("v0.0.0", AppVersionInfo.FormatDisplayVersion(null, null), "FormatDisplayVersion returns v0.0.0 when no version metadata is available");
 AssertTrue(AppVersionInfo.GetDisplayVersion(typeof(AppVersionInfo).Assembly).StartsWith("v0.", StringComparison.Ordinal), "GetDisplayVersion reads version from Core assembly");
 
+// Task 1 (Price Diffs & Add Models): OpenRouterModelCandidate extraction
+string candidateJson = """
+{
+  "data": [
+    {
+      "id": "anthropic/claude-sonnet-4.6",
+      "name": "Anthropic: Claude Sonnet 4.6",
+      "context_length": 200000,
+      "pricing": { "prompt": "0.000003", "completion": "0.000015", "input_cache_read": "0.0000003" }
+    },
+    {
+      "id": "mistralai/mistral-large-2512",
+      "name": "Mistral Large",
+      "context_length": 131072,
+      "pricing": { "prompt": "0.000002", "completion": "0.000006" }
+    }
+  ]
+}
+""";
+OpenRouterSyncResult candidateResult = OpenRouterPriceParser.MergeLivePricesDetailed(catalog.AllModels, candidateJson);
+AssertTrue(candidateResult.IsValidPayload, "Candidate extraction payload valid");
+AssertEqual(2, candidateResult.AvailableModels.Count, "AvailableModels captures all valid OpenRouter entries");
+var mistral = candidateResult.AvailableModels.First(m => m.FullId == "mistralai/mistral-large-2512");
+AssertEqual("Mistral Large", mistral.Name, "Candidate name parsed");
+AssertEqual("Mistralai", mistral.Provider, "Unknown provider slug capitalized");
+AssertEqual(131072, mistral.ContextTokens, "Candidate context_length parsed");
+AssertEqual(2.00m, mistral.InputPerMillion, "Candidate input price parsed");
+AssertEqual("Google Gemini", OpenRouterPriceParser.MapProviderName("google/gemini-2.5-pro"), "Google slug maps to Google Gemini");
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler

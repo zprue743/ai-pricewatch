@@ -4,13 +4,27 @@ using AiPriceWatch.Core.Models;
 
 namespace AiPriceWatch.Core.Services;
 
+public sealed record OpenRouterModelCandidate(
+    string FullId,
+    string Name,
+    string Provider,
+    decimal InputPerMillion,
+    decimal OutputPerMillion,
+    decimal? CachedInputPerMillion,
+    int ContextTokens);
+
 public sealed record OpenRouterSyncResult(
     IReadOnlyList<ModelPricingEntry> Models,
     bool IsValidPayload,
     int UpdatedCount,
     int IgnoredCount,
     int DuplicateCount,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    IReadOnlyList<OpenRouterModelCandidate>? AvailableModels = null)
+{
+    public IReadOnlyList<OpenRouterModelCandidate> AvailableModels { get; init; } =
+        AvailableModels ?? Array.Empty<OpenRouterModelCandidate>();
+}
 
 public static class OpenRouterPriceParser
 {
@@ -59,6 +73,7 @@ public static class OpenRouterPriceParser
 
         int ignoredCount = 0;
         int duplicateCount = 0;
+        var availableModels = new List<OpenRouterModelCandidate>();
 
         try
         {
@@ -123,6 +138,30 @@ public static class OpenRouterPriceParser
 
                 var rate = (inputPerM, outputPerM, cachedPerM);
                 fullIdLookup[fullId] = rate;
+
+                string candidateName = item.TryGetProperty("name", out JsonElement nameElem) &&
+                                       nameElem.ValueKind == JsonValueKind.String &&
+                                       !string.IsNullOrWhiteSpace(nameElem.GetString())
+                    ? nameElem.GetString()!.Trim()
+                    : fullId;
+
+                int contextTokens = 0;
+                if (item.TryGetProperty("context_length", out JsonElement ctxElem) &&
+                    ctxElem.ValueKind == JsonValueKind.Number &&
+                    ctxElem.TryGetInt32(out int parsedCtx) &&
+                    parsedCtx > 0)
+                {
+                    contextTokens = parsedCtx;
+                }
+
+                availableModels.Add(new OpenRouterModelCandidate(
+                    FullId: fullId,
+                    Name: candidateName,
+                    Provider: MapProviderName(fullId),
+                    InputPerMillion: inputPerM,
+                    OutputPerMillion: outputPerM,
+                    CachedInputPerMillion: cachedPerM,
+                    ContextTokens: contextTokens));
 
                 string shortId = fullId.Contains('/')
                     ? fullId[(fullId.IndexOf('/') + 1)..]
@@ -216,7 +255,32 @@ public static class OpenRouterPriceParser
             IsValidPayload: true,
             UpdatedCount: updatedCount,
             IgnoredCount: ignoredCount,
-            DuplicateCount: duplicateCount);
+            DuplicateCount: duplicateCount,
+            AvailableModels: availableModels);
+    }
+
+    public static string MapProviderName(string fullId)
+    {
+        if (string.IsNullOrWhiteSpace(fullId))
+        {
+            return "Other";
+        }
+
+        int slashIndex = fullId.IndexOf('/');
+        string slug = slashIndex > 0 ? fullId[..slashIndex].Trim() : fullId.Trim();
+
+        return slug.ToLowerInvariant() switch
+        {
+            "anthropic" => "Anthropic",
+            "google" => "Google Gemini",
+            "openai" => "OpenAI",
+            "x-ai" => "xAI",
+            "deepseek" => "DeepSeek",
+            "cursor" => "Cursor",
+            _ => string.IsNullOrEmpty(slug)
+                ? "Other"
+                : char.ToUpperInvariant(slug[0]) + slug[1..]
+        };
     }
 
     private static bool TryReadPerMillionPrice(
