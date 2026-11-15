@@ -121,6 +121,10 @@ public sealed class PricingCatalogService
             PricingSortField.ScoreDesc => query
                 .OrderByDescending(m => m.IntelligenceScore ?? 0m)
                 .ThenBy(m => m.InputPerMillion),
+            PricingSortField.CursorBenchDesc => query
+                .OrderByDescending(m => m.CursorBenchScore ?? 0m)
+                .ThenByDescending(m => m.IntelligenceScore ?? 0m)
+                .ThenBy(m => m.InputPerMillion),
             PricingSortField.InputPriceAsc => useFastMode
                 ? query
                     .OrderBy(m => !m.FastInputPerMillion.HasValue)

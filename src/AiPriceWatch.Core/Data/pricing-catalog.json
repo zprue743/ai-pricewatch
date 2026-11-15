@@ -29,7 +29,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  60,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Max)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "claude-opus-5-5",
@@ -61,7 +70,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  57.8,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Max)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "claude-sonnet-5-5",
@@ -93,7 +111,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  55.5,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Max)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "claude-haiku-5-5",
@@ -125,7 +152,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  48.4,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Max)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "claude-sonnet-4-6",
@@ -189,7 +225,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  60.4,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (High)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "gemini-4-hydrogen",
@@ -221,7 +266,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  57.8,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Extra High)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "gemini-4-argon",
@@ -253,7 +307,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  52.9,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (High)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "gemini-3.8-flash",
@@ -541,7 +604,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  41.7,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Max)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "gpt-5.5",
@@ -669,7 +741,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  27.7,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (None)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "composer-2",
@@ -733,7 +814,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  46.3,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Extra High)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "grok-4.6",
@@ -765,7 +855,16 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  41.4,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Extra High)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     },
     {
         "id":  "grok-4.5",
@@ -925,6 +1024,15 @@
                                 "sourceUrl":  "https://artificialanalysis.ai/models",
                                 "scoreDate":  "2026-11-10T00:00:00Z",
                                 "status":  "verified"
-                            }
+                            },
+        "cursorBenchScore":  47.7,
+        "cursorBenchSource":  {
+                                  "publisher":  "Cursor",
+                                  "benchmarkName":  "CursorBench",
+                                  "version":  "4.0 (Max)",
+                                  "sourceUrl":  "https://cursor.com/cursorbench",
+                                  "scoreDate":  "2026-10-07T00:00:00Z",
+                                  "status":  "verified"
+                              }
     }
 ]

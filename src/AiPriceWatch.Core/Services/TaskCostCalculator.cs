@@ -123,6 +123,16 @@ public static class TaskCostCalculator
         return string.Create(CultureInfo.InvariantCulture, $"{score.Value:F1}");
     }
 
+    public static string FormatPercentageScore(decimal? score)
+    {
+        if (score is null || score.Value <= 0m)
+        {
+            return "N/A";
+        }
+
+        return string.Create(CultureInfo.InvariantCulture, $"{score.Value:F1}%");
+    }
+
     public static string FormatContextWindow(int contextTokens)
     {
         if (contextTokens <= 0)

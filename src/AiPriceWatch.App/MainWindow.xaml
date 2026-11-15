@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="AI PriceWatch HUD"
         Icon="pack://application:,,,/Assets/app-icon.ico"
-        Width="900"
+        Width="960"
         Height="520"
-        MinWidth="700"
+        MinWidth="750"
         MinHeight="360"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
@@ -139,8 +139,8 @@
                                 Background="#1F242C"
                                 BorderBrush="#30363D"
                                 Cursor="Hand"
-                                AutomationProperties.Name="Sync live prices from OpenRouter"
-                                ToolTip="Fetch live model token prices from OpenRouter" />
+                                AutomationProperties.Name="Sync live prices from OpenRouter and CursorBench scores"
+                                ToolTip="Fetch live model token prices from OpenRouter and CursorBench scores from cursor.com" />
 
                         <Button x:Name="SettingsButton"
                                 Content="⚙"
@@ -280,6 +280,7 @@
                                   SelectedIndex="0"
                                   ToolTip="Sort models">
                             <ComboBoxItem Content="Sort: Score (AAII) ↓" Tag="ScoreDesc" />
+                            <ComboBoxItem Content="Sort: CursorBench ↓" Tag="CursorBenchDesc" />
                             <ComboBoxItem Content="Sort: Flagships First" Tag="Featured" />
                             <ComboBoxItem Content="Sort: Input $/1M ↑" Tag="InputPriceAsc" />
                             <ComboBoxItem Content="Sort: Output $/1M ↑" Tag="OutputPriceAsc" />
@@ -327,41 +328,49 @@
                     Padding="12,0,18,0">
                 <Grid VerticalAlignment="Center">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2.1*" />
-                        <ColumnDefinition Width="0.72*" />
-                        <ColumnDefinition Width="1.2*" />
-                        <ColumnDefinition Width="1.2*" />
-                        <ColumnDefinition Width="0.7*" />
-                        <ColumnDefinition Width="0.52*" />
-                        <ColumnDefinition Width="0.92*" />
+                        <ColumnDefinition Width="2.0*" />
+                        <ColumnDefinition Width="0.68*" />
+                        <ColumnDefinition Width="0.76*" />
+                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="0.68*" />
+                        <ColumnDefinition Width="0.50*" />
+                        <ColumnDefinition Width="0.88*" />
                         <ColumnDefinition Width="58" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="MODEL / PROVIDER • TIER" Foreground="#8B949E" FontSize="10" FontWeight="Bold" />
                     <TextBlock Grid.Column="1"
-                               Text="AAII SCORE"
+                               Text="AAII"
                                Foreground="#D2A8FF"
                                FontSize="10"
                                FontWeight="Bold"
                                TextAlignment="Center"
                                ToolTip="Artificial Analysis Intelligence Index v5 composite benchmark score" />
                     <TextBlock Grid.Column="2"
+                               Text="CURSORBENCH"
+                               Foreground="#56D4DD"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               TextAlignment="Center"
+                               ToolTip="CursorBench 4.0 peak correctness % (https://cursor.com/cursorbench)" />
+                    <TextBlock Grid.Column="3"
                                Text="STD (IN / OUT)"
                                Foreground="#E6EDF3"
                                FontSize="10"
                                FontWeight="Bold"
                                TextAlignment="Right"
                                ToolTip="Standard Mode: Input $ / Output $ per 1M tokens" />
-                    <TextBlock Grid.Column="3"
+                    <TextBlock Grid.Column="4"
                                Text="⚡ FAST (IN / OUT)"
                                Foreground="#FFA657"
                                FontSize="10"
                                FontWeight="Bold"
                                TextAlignment="Right"
                                ToolTip="Fast / Priority Mode: Input $ / Output $ per 1M tokens" />
-                    <TextBlock Grid.Column="4" Text="CACHE /1M" Foreground="#79C0FF" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
-                    <TextBlock Grid.Column="5" Text="CTX" Foreground="#8B949E" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
-                    <TextBlock Grid.Column="6" Text="EST. TASK" Foreground="#3FB950" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
-                    <TextBlock Grid.Column="7" Text="VIEW" Foreground="#8B949E" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
+                    <TextBlock Grid.Column="5" Text="CACHE /1M" Foreground="#79C0FF" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
+                    <TextBlock Grid.Column="6" Text="CTX" Foreground="#8B949E" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
+                    <TextBlock Grid.Column="7" Text="EST. TASK" Foreground="#3FB950" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
+                    <TextBlock Grid.Column="8" Text="VIEW" Foreground="#8B949E" FontSize="10" FontWeight="Bold" TextAlignment="Right" />
                 </Grid>
             </Border>
 
@@ -383,13 +392,14 @@
                                     ToolTip="{Binding RowDetailsTooltip}">
                                 <Grid VerticalAlignment="Center">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2.1*" />
-                                        <ColumnDefinition Width="0.72*" />
-                                        <ColumnDefinition Width="1.2*" />
-                                        <ColumnDefinition Width="1.2*" />
-                                        <ColumnDefinition Width="0.7*" />
-                                        <ColumnDefinition Width="0.52*" />
-                                        <ColumnDefinition Width="0.92*" />
+                                        <ColumnDefinition Width="2.0*" />
+                                        <ColumnDefinition Width="0.68*" />
+                                        <ColumnDefinition Width="0.76*" />
+                                        <ColumnDefinition Width="1.15*" />
+                                        <ColumnDefinition Width="1.15*" />
+                                        <ColumnDefinition Width="0.68*" />
+                                        <ColumnDefinition Width="0.50*" />
+                                        <ColumnDefinition Width="0.88*" />
                                         <ColumnDefinition Width="58" />
                                     </Grid.ColumnDefinitions>
 
@@ -464,8 +474,24 @@
                                                    FontWeight="Bold" />
                                     </Border>
 
+                                    <!-- CursorBench 4.0 Correctness Score -->
+                                    <Border Grid.Column="2"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            CornerRadius="4"
+                                            Padding="6,2"
+                                            Background="#1F56D4DD"
+                                            BorderBrush="#5556D4DD"
+                                            BorderThickness="1"
+                                            ToolTip="{Binding CursorBenchTooltip}">
+                                        <TextBlock Text="{Binding CursorBenchScoreDisplay}"
+                                                   Foreground="#56D4DD"
+                                                   FontSize="11"
+                                                   FontWeight="Bold" />
+                                    </Border>
+
                                     <!-- Standard Mode Input / Output $/1M -->
-                                    <TextBlock Grid.Column="2"
+                                    <TextBlock Grid.Column="3"
                                                Text="{Binding StandardInOutDisplay}"
                                                ToolTip="{Binding StandardPricingTooltip}"
                                                Foreground="#E6EDF3"
@@ -474,7 +500,7 @@
                                                TextAlignment="Right" />
 
                                     <!-- Fast / Priority Mode Input / Output $/1M -->
-                                    <TextBlock Grid.Column="3"
+                                    <TextBlock Grid.Column="4"
                                                Text="{Binding FastInOutDisplay}"
                                                ToolTip="{Binding FastPricingTooltip}"
                                                Foreground="#FFA657"
@@ -483,7 +509,7 @@
                                                TextAlignment="Right" />
 
                                     <!-- Cached Input $/1M -->
-                                    <TextBlock Grid.Column="4"
+                                    <TextBlock Grid.Column="5"
                                                Text="{Binding CachedPriceDisplay}"
                                                ToolTip="{Binding CachedPricingTooltip}"
                                                Foreground="#79C0FF"
@@ -492,7 +518,7 @@
                                                TextAlignment="Right" />
 
                                     <!-- Context Window -->
-                                    <TextBlock Grid.Column="5"
+                                    <TextBlock Grid.Column="6"
                                                Text="{Binding ContextDisplay}"
                                                Foreground="#8B949E"
                                                FontSize="11"
@@ -500,7 +526,7 @@
                                                TextAlignment="Right" />
 
                                     <!-- Estimated Task Cost -->
-                                    <TextBlock Grid.Column="6"
+                                    <TextBlock Grid.Column="7"
                                                Text="{Binding EstimatedTaskCostDisplay}"
                                                Foreground="#3FB950"
                                                FontWeight="Bold"
@@ -509,7 +535,7 @@
                                                TextAlignment="Right" />
 
                                     <!-- Hide / Unhide Row Action -->
-                                    <Button Grid.Column="7"
+                                    <Button Grid.Column="8"
                                             Content="{Binding HideActionLabel}"
                                             Tag="{Binding Id}"
                                             Click="RowHideButton_Click"
@@ -556,7 +582,7 @@
                                    FontSize="10"
                                    TextWrapping="Wrap"
                                    Margin="0,3,0,0" />
-                        <TextBlock Text="• Works offline with the bundled catalog. Click SYNC LIVE for OpenRouter standard rates; N/A means no verified Fast/Benchmark data."
+                        <TextBlock Text="• Works offline with the bundled catalog. Click SYNC LIVE for OpenRouter rates &amp; CursorBench scores; N/A means no verified Fast/Benchmark data."
                                    Foreground="#8B949E"
                                    FontSize="10"
                                    TextWrapping="Wrap"

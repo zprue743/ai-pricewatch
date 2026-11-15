@@ -499,15 +499,21 @@ public sealed class HudViewModel : INotifyPropertyChanged
         {
             SyncStatus = SyncStatus.Syncing;
             LastSyncError = null;
-            StatusText = "Syncing live prices from OpenRouter...";
+            StatusText = "Syncing live prices & CursorBench scores...";
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, "https://openrouter.ai/api/v1/models");
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiPriceWatch", "0.2"));
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            Task<string> openRouterTask = FetchTextAsync(
+                httpClient,
+                "https://openrouter.ai/api/v1/models",
+                "application/json",
+                timeoutCts.Token);
 
-            using HttpResponseMessage response = await httpClient.SendAsync(request, timeoutCts.Token);
-            response.EnsureSuccessStatusCode();
-            string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+            Task<string?> cursorBenchTask = TryFetchTextAsync(
+                httpClient,
+                CursorBenchParser.SourceUrl,
+                "text/html",
+                timeoutCts.Token);
+
+            string json = await openRouterTask;
 
             OpenRouterSyncResult result = OpenRouterPriceParser.MergeLivePricesDetailed(_catalog.AllModels, json);
             if (!result.IsValidPayload)
@@ -525,7 +531,27 @@ public sealed class HudViewModel : INotifyPropertyChanged
                 return;
             }
 
-            _catalog.MergeEntries(result.Models);
+            IReadOnlyList<ModelPricingEntry> mergedModels = result.Models;
+            string? cursorBenchHtml = await cursorBenchTask;
+            CursorBenchSyncResult? cbResult = null;
+            if (cursorBenchHtml is not null)
+            {
+                try
+                {
+                    cbResult = CursorBenchParser.MergeLiveScores(mergedModels, cursorBenchHtml);
+                }
+                catch
+                {
+                    cbResult = null;
+                }
+            }
+
+            if (cbResult is { IsValidPayload: true })
+            {
+                mergedModels = cbResult.Models;
+            }
+
+            _catalog.MergeEntries(mergedModels);
             DataOrigin = CatalogDataOrigin.LiveSynced;
             SyncStatus = SyncStatus.Succeeded;
             LastSuccessfulSyncAt = DateTimeOffset.Now;
@@ -533,7 +559,10 @@ public sealed class HudViewModel : INotifyPropertyChanged
             LastSyncMatchedCount = result.UpdatedCount;
             LastSyncIgnoredCount = result.IgnoredCount;
             RefreshVisibleModels();
-            StatusText = $"Live sync OK • {result.UpdatedCount} matched, {result.IgnoredCount} ignored ({LastSuccessfulSyncAt.Value:HH:mm})";
+            string cbSuffix = cbResult is { IsValidPayload: true }
+                ? $", {cbResult.UpdatedCount} CursorBench"
+                : " • CursorBench unchanged";
+            StatusText = $"Live sync OK • {result.UpdatedCount} prices{cbSuffix} ({LastSuccessfulSyncAt.Value:HH:mm})";
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -562,6 +591,37 @@ public sealed class HudViewModel : INotifyPropertyChanged
             SyncStatus = SyncStatus.Failed;
             LastSyncError = ex.Message;
             StatusText = $"Live sync failed ({ex.GetType().Name}) • keeping {GetOriginLabel()}";
+        }
+    }
+
+    private static async Task<string> FetchTextAsync(
+        HttpClient httpClient,
+        string url,
+        string acceptMediaType,
+        CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("AiPriceWatch", "0.2"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(acceptMediaType));
+
+        using HttpResponseMessage response = await httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(ct);
+    }
+
+    private static async Task<string?> TryFetchTextAsync(
+        HttpClient httpClient,
+        string url,
+        string acceptMediaType,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await FetchTextAsync(httpClient, url, acceptMediaType, ct);
+        }
+        catch
+        {
+            return null;
         }
     }
 
