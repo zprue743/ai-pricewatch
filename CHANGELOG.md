@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/zprue743/ai-pricewatch/compare/v0.3.0...v0.4.0) (2026-11-15)
+
+
+### Features
+
+* **settings:** display current app version in settings menu ([4514543](https://github.com/zprue743/ai-pricewatch/commit/4514543ac0696656844c4886d2ea8fee5fd62839))
+* **settings:** display current app version in settings menu ([9b787a7](https://github.com/zprue743/ai-pricewatch/commit/9b787a7964fc96bd28ba8939236e701a2ccc9eb0))
+
 ## [0.3.0](https://github.com/zprue743/ai-pricewatch/compare/v0.2.0...v0.3.0) (2026-11-15)
 
 
