@@ -642,6 +642,43 @@ finally
     if (File.Exists(tempSnapshotPath)) File.Delete(tempSnapshotPath);
 }
 
+// Task 3 (Price Diffs & Add Models): CatalogDiffCalculator
+var prevModels = new List<ModelPricingEntry> { sampleFastModel };
+var currModels = new List<ModelPricingEntry> { sampleFastModel with { OutputPerMillion = 1.50m } };
+var priorPrices = new Dictionary<string, PriceSnapshot>(StringComparer.OrdinalIgnoreCase)
+{
+    [sampleFastModel.Id] = new PriceSnapshot(0.25m, 2.00m, 0.025m)
+};
+var candidates = new List<OpenRouterModelCandidate>
+{
+    new("openai/gpt-5-mini", "GPT-5 Mini", "OpenAI", 0.25m, 1.50m, 0.025m, 1_000_000),
+    new("cohere/command-a", "Command A", "Cohere", 2.50m, 10.00m, null, 256_000)
+};
+
+// First sync: no prior known IDs -> 0 NewOpenRouterIds
+CatalogDiffResult firstSync = CatalogDiffCalculator.ComputeDiffs(
+    prevModels, currModels, candidates, priorPrices, new HashSet<string>(StringComparer.OrdinalIgnoreCase), DateTimeOffset.UtcNow);
+AssertEqual(-25.0m, firstSync.PriceDiffs[sampleFastModel.Id].PercentChange, "Price drop computed as -25%");
+AssertEqual(0, firstSync.NewOpenRouterIds.Count, "First sync seeds known IDs without flooding NEW badges");
+AssertEqual(2, firstSync.UpdatedKnownOpenRouterIds.Count, "First sync records all seen OpenRouter IDs");
+
+// Subsequent sync with new model
+var candidates2 = candidates.Concat(new[] {
+    new OpenRouterModelCandidate("meta-llama/llama-4-maverick", "Llama 4 Maverick", "Meta-llama", 0.20m, 0.60m, null, 1_000_000)
+}).ToList();
+CatalogDiffResult secondSync = CatalogDiffCalculator.ComputeDiffs(
+    prevModels, currModels, candidates2, priorPrices, firstSync.UpdatedKnownOpenRouterIds, DateTimeOffset.UtcNow);
+AssertTrue(secondSync.NewOpenRouterIds.Contains("meta-llama/llama-4-maverick"), "Subsequent sync flags unseen OpenRouter ID as NEW");
+
+// Zero-price to paid transition
+var freePrior = new Dictionary<string, PriceSnapshot>(StringComparer.OrdinalIgnoreCase)
+{
+    [sampleFastModel.Id] = new PriceSnapshot(0m, 0m, null)
+};
+CatalogDiffResult freeToPaid = CatalogDiffCalculator.ComputeDiffs(
+    prevModels, currModels, candidates2, freePrior, firstSync.UpdatedKnownOpenRouterIds, DateTimeOffset.UtcNow);
+AssertEqual(100.0m, freeToPaid.PriceDiffs[sampleFastModel.Id].PercentChange, "Zero-to-paid transition returns +100% without DivideByZeroException");
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
