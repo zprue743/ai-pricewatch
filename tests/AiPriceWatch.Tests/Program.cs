@@ -563,6 +563,14 @@ finally
     if (File.Exists(syncPrefsPath)) File.Delete(syncPrefsPath);
 }
 
+// AppVersionInfo formatting & assembly version lookup
+AssertEqual("v0.3.0", AppVersionInfo.FormatDisplayVersion("0.3.0", new Version(0, 1, 0, 0)), "FormatDisplayVersion prefers informational version over assembly version");
+AssertEqual("v0.3.0", AppVersionInfo.FormatDisplayVersion("0.3.0+abc1234", new Version(0, 1, 0, 0)), "FormatDisplayVersion strips SourceLink metadata");
+AssertEqual("v0.3.0-beta.1", AppVersionInfo.FormatDisplayVersion("V0.3.0-beta.1", null), "FormatDisplayVersion normalizes leading v prefix");
+AssertEqual("v0.1.0", AppVersionInfo.FormatDisplayVersion("  ", new Version(0, 1, 0, 0)), "FormatDisplayVersion falls back to assembly version");
+AssertEqual("v0.0.0", AppVersionInfo.FormatDisplayVersion(null, null), "FormatDisplayVersion returns v0.0.0 when no version metadata is available");
+AssertTrue(AppVersionInfo.GetDisplayVersion(typeof(AppVersionInfo).Assembly).StartsWith("v0.", StringComparison.Ordinal), "GetDisplayVersion reads version from Core assembly");
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler

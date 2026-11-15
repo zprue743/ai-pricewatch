@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SettingsVersionText.Text = AppVersionInfo.GetDisplayVersion(typeof(MainWindow).Assembly);
 
         _viewModel = new HudViewModel(PricingCatalogService.LoadDefault());
         DataContext = _viewModel;
