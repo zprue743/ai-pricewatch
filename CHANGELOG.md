@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/zprue743/ai-pricewatch/compare/v0.3.0...v0.4.0) (2026-11-15)
+
+
+### Features
+
+* **app:** add price diff badges and OpenRouter Add Models overlay in HUD ([4014af9](https://github.com/zprue743/ai-pricewatch/commit/4014af92f779a2f777189d5042d41d6db33161b6))
+* **core:** add CatalogDiffCalculator for price deltas and new OpenRouter IDs ([f0da09c](https://github.com/zprue743/ai-pricewatch/commit/f0da09c99bd2a6bcf71aafd6edfa30926d1b1783))
+* **core:** add SyncSnapshotStore for atomic diff and custom model persistence ([15752e5](https://github.com/zprue743/ai-pricewatch/commit/15752e5a144ee1809558a5a8c19df3cef7bc4d59))
+* **core:** extract OpenRouterModelCandidate metadata during live sync ([46607d0](https://github.com/zprue743/ai-pricewatch/commit/46607d07f33c8c4f834c29481c423b6a618c42e0))
+* **core:** integrate price diffs and OpenRouter model add/remove into HudViewModel ([1d390f5](https://github.com/zprue743/ai-pricewatch/commit/1d390f552f9f7adcd1461d8579f01c8f695a0011))
+* price change diffs and OpenRouter model discovery (+ ADD) ([31013c3](https://github.com/zprue743/ai-pricewatch/commit/31013c3a21a06f3d48cd26d0c350db463dc2b636))
+* **settings:** display current app version in settings menu ([4514543](https://github.com/zprue743/ai-pricewatch/commit/4514543ac0696656844c4886d2ea8fee5fd62839))
+* **settings:** display current app version in settings menu ([9b787a7](https://github.com/zprue743/ai-pricewatch/commit/9b787a7964fc96bd28ba8939236e701a2ccc9eb0))
+
 ## [0.3.0](https://github.com/zprue743/ai-pricewatch/compare/v0.2.0...v0.3.0) (2026-11-15)
 
 
