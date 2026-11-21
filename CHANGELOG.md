@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/zprue743/ai-pricewatch/compare/v0.4.0...v0.5.0) (2026-11-21)
+
+
+### Features
+
+* price diffs, OpenRouter model discovery, and SpaceXSI provider unification ([709a5f9](https://github.com/zprue743/ai-pricewatch/commit/709a5f9a3822729fced082a1c29b878e7341048c))
+* unify SpaceXSI provider and exclude OpenRouter batch/alias models ([b3ef30f](https://github.com/zprue743/ai-pricewatch/commit/b3ef30f323e11ba30e6aa2ca7bb62533a4b55033))
+
+
+### Bug Fixes
+
+* **core:** match OpenRouter-prefixed names and apply CursorBench scores on model add ([7c22115](https://github.com/zprue743/ai-pricewatch/commit/7c22115d964ee436e108268ca36e3cad4c1291a7))
+* **core:** match OpenRouter-prefixed names and apply CursorBench scores on model add ([2f6cad8](https://github.com/zprue743/ai-pricewatch/commit/2f6cad8f15bc16d6d62957abed8ea9eabe70b699))
+
 ## [0.4.0](https://github.com/zprue743/ai-pricewatch/compare/v0.3.0...v0.4.0) (2026-11-15)
 
 
