@@ -46,7 +46,7 @@ AI PriceWatch runs locally with no telemetry, no user accounts, and no backgroun
 | Shortcut | Action |
 |---|---|
 | `Ctrl+Shift+Space` | Global hotkey to summon or hide the HUD overlay |
-| `Alt+1` .. `Alt+7` | Switch provider tab (`All`, `Anthropic`, `Google Gemini`, `OpenAI`, `Cursor`, `xAI`, `DeepSeek`) |
+| `Alt+1` .. `Alt+6` | Switch provider tab (`All`, `Anthropic`, `Google Gemini`, `OpenAI`, `SpaceXSI`, `DeepSeek`) |
 | `Ctrl+M` | Toggle `⚡ FAST` mode pricing on/off |
 | `Ctrl+F` | Focus the search bar |
 | `Esc` | Close Settings or clear active search query |

@@ -115,8 +115,9 @@ public sealed class HudViewModel : INotifyPropertyChanged
             new TaskPreset("Repo Audit", 250_000, 0, 16_000, "250K in / 16K out")
         ];
 
-        _selectedProvider = providerList.Contains(prefs.SelectedProvider, StringComparer.OrdinalIgnoreCase)
-            ? providerList.First(p => string.Equals(p, prefs.SelectedProvider, StringComparison.OrdinalIgnoreCase))
+        string normalizedSavedProvider = OpenRouterPriceParser.NormalizeProviderName(prefs.SelectedProvider);
+        _selectedProvider = providerList.Contains(normalizedSavedProvider, StringComparer.OrdinalIgnoreCase)
+            ? providerList.First(p => string.Equals(p, normalizedSavedProvider, StringComparison.OrdinalIgnoreCase))
             : "All";
         _selectedTier = prefs.SelectedTier;
         _selectedSort = prefs.SelectedSort;
@@ -906,7 +907,12 @@ public sealed class HudViewModel : INotifyPropertyChanged
 
                 if (_addedModelIds.Add(added.Id))
                 {
-                    merged.Add(added);
+                    string normalizedProvider = OpenRouterPriceParser.NormalizeProviderName(added.Provider);
+                    ModelPricingEntry entry = !string.IsNullOrEmpty(normalizedProvider) &&
+                                              !string.Equals(added.Provider, normalizedProvider, StringComparison.Ordinal)
+                        ? added with { Provider = normalizedProvider }
+                        : added;
+                    merged.Add(entry);
                 }
             }
 

@@ -60,10 +60,12 @@ AssertTrue(
     providers.Contains("OpenAI") &&
     providers.Contains("Anthropic") &&
     providers.Contains("Google Gemini") &&
-    providers.Contains("xAI") &&
-    providers.Contains("Cursor") &&
+    providers.Contains("SpaceXSI") &&
     providers.Contains("DeepSeek"),
-    "Includes all 6 core providers including Cursor");
+    "Includes all 5 core providers including SpaceXSI");
+AssertTrue(
+    !providers.Contains("xAI") && !providers.Contains("Cursor"),
+    "Bundles legacy xAI and Cursor providers under SpaceXSI");
 
 var ids = catalog.AllModels.Select(m => m.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
 AssertTrue(ids.Contains("gemini-4-carbon") && ids.Contains("gemini-4-argon") && ids.Contains("gemini-3.8-flash"), "Contains current Google Gemini 4 & 3.8 lineup");
@@ -119,10 +121,12 @@ AssertEqual(2.80m, updatedSonnet46.InputPerMillion, "Matches dotted OpenRouter I
 
 // Task 3: HUD ViewModel, Fast Mode Toggle, Hide/Unhide Models & Persistence
 string tempPrefsPath = Path.Combine(Path.GetTempPath(), $"aipricewatch-prefs-{Guid.NewGuid():N}.json");
+string tempTask3SnapPath = Path.Combine(Path.GetTempPath(), $"aipricewatch-snap-{Guid.NewGuid():N}.json");
 try
 {
     var prefsStore = new UserPreferencesStore(tempPrefsPath);
-    var vm = new HudViewModel(PricingCatalogService.LoadDefault(), prefsStore);
+    var task3SnapStore = new SyncSnapshotStore(tempTask3SnapPath);
+    var vm = new HudViewModel(PricingCatalogService.LoadDefault(), prefsStore, task3SnapStore);
     int initialTotal = vm.VisibleModels.Count;
     AssertEqual("All", vm.SelectedProvider, "Default provider is All");
     AssertEqual(PricingSortField.ScoreDesc, vm.SelectedSort, "Default sort is ScoreDesc (AAII Score)");
@@ -139,7 +143,7 @@ try
     AssertTrue(vm.VisibleModels.All(m => m.Id != "grok-build-0.1"), "grok-build-0.1 is hidden");
 
     // Verify persistence across new ViewModel instance
-    var vmReloaded = new HudViewModel(PricingCatalogService.LoadDefault(), prefsStore);
+    var vmReloaded = new HudViewModel(PricingCatalogService.LoadDefault(), prefsStore, task3SnapStore);
     AssertEqual(1, vmReloaded.HiddenCount, "Reloaded ViewModel restores hidden model count from disk");
     AssertTrue(vmReloaded.VisibleModels.All(m => m.Id != "grok-build-0.1"), "Reloaded ViewModel keeps grok-build-0.1 hidden");
 
@@ -169,9 +173,12 @@ try
     var grok46Fast = vm.VisibleModels.First(m => m.Id == "grok-4.6").EstimatedTaskCostRaw;
     AssertTrue(grok46Fast > grok46Standard, "Toggling IsFastMode increases estimated task cost to Fast mode rate");
 
-    // Provider switching updates VisibleModels
-    vm.SelectedProvider = "Cursor";
-    AssertTrue(vm.VisibleModels.All(m => m.Provider == "Cursor"), "Filtering by Cursor only shows Cursor Composer models");
+    // Provider switching updates VisibleModels and bundles Grok + Composer under SpaceXSI
+    vm.SelectedProvider = "SpaceXSI";
+    AssertTrue(vm.VisibleModels.All(m => m.Provider == "SpaceXSI"), "Filtering by SpaceXSI only shows SpaceXSI models");
+    AssertTrue(
+        vm.VisibleModels.Any(m => m.Id == "composer-2.5") && vm.VisibleModels.Any(m => m.Id == "grok-4.7"),
+        "SpaceXSI bundles both Composer and Grok models");
 
     // Selecting preset updates token counts and recomputes task cost
     var longContextPreset = vm.Presets.First(p => p.InputTokens >= 200_000);
@@ -189,6 +196,10 @@ finally
     if (File.Exists(tempPrefsPath))
     {
         File.Delete(tempPrefsPath);
+    }
+    if (File.Exists(tempTask3SnapPath))
+    {
+        File.Delete(tempTask3SnapPath);
     }
 }
 
@@ -280,14 +291,27 @@ var fastSorted = fastCatalog.Query(sort: PricingSortField.TotalTaskCostAsc, useF
 AssertEqual("verified-fast", fastSorted[0].Id, "Fast mode TotalTaskCostAsc ranks verified Fast model ahead of N/A model");
 AssertEqual("cheap-no-fast", fastSorted[1].Id, "Fast mode TotalTaskCostAsc pushes N/A Fast model to the end");
 
-var fastVm = new HudViewModel(fastCatalog, new UserPreferencesStore(Path.Combine(Path.GetTempPath(), $"aipw-pw02-{Guid.NewGuid():N}.json")));
-fastVm.IsFastMode = true;
-var noFastRow = fastVm.VisibleModels.First(m => m.Id == "cheap-no-fast");
-var verifiedFastRow = fastVm.VisibleModels.First(m => m.Id == "verified-fast");
-AssertEqual("N/A", noFastRow.FastInOutDisplay, "Absent Fast pricing displays N/A");
-AssertEqual("N/A", noFastRow.EstimatedTaskCostDisplay, "Absent Fast task cost displays N/A in Fast mode");
-AssertTrue(!noFastRow.IsCheapestInView, "Model with N/A Fast pricing is never marked cheapest in Fast mode");
-AssertTrue(verifiedFastRow.IsCheapestInView, "Verified Fast model is marked cheapest in Fast mode");
+string fastPrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-pw02-{Guid.NewGuid():N}.json");
+string fastSnapPath = Path.Combine(Path.GetTempPath(), $"aipw-pw02-snap-{Guid.NewGuid():N}.json");
+try
+{
+    var fastVm = new HudViewModel(
+        fastCatalog,
+        new UserPreferencesStore(fastPrefsPath),
+        new SyncSnapshotStore(fastSnapPath));
+    fastVm.IsFastMode = true;
+    var noFastRow = fastVm.VisibleModels.First(m => m.Id == "cheap-no-fast");
+    var verifiedFastRow = fastVm.VisibleModels.First(m => m.Id == "verified-fast");
+    AssertEqual("N/A", noFastRow.FastInOutDisplay, "Absent Fast pricing displays N/A");
+    AssertEqual("N/A", noFastRow.EstimatedTaskCostDisplay, "Absent Fast task cost displays N/A in Fast mode");
+    AssertTrue(!noFastRow.IsCheapestInView, "Model with N/A Fast pricing is never marked cheapest in Fast mode");
+    AssertTrue(verifiedFastRow.IsCheapestInView, "Verified Fast model is marked cheapest in Fast mode");
+}
+finally
+{
+    if (File.Exists(fastPrefsPath)) File.Delete(fastPrefsPath);
+    if (File.Exists(fastSnapPath)) File.Delete(fastSnapPath);
+}
 
 // OpenRouterPriceParser must NOT derive 2x Fast pricing when updating standard rates
 var openRouterFastMerged = OpenRouterPriceParser.MergeLivePrices(
@@ -329,33 +353,44 @@ AssertEqual(3.00m, dupResult.Models[0].InputPerMillion, "First valid entry wins 
 AssertEqual(0.99m, dupResult.Models[1].InputPerMillion, "Ambiguous short ID across providers is not merged");
 
 // Offline / failing HTTP handler keeps prior valid data and marks SyncStatus.Failed
-var syncVm = new HudViewModel(
-    new PricingCatalogService([verifiedFastEntry]),
-    new UserPreferencesStore(Path.Combine(Path.GetTempPath(), $"aipw-pw03-{Guid.NewGuid():N}.json")));
+string pw03PrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-pw03-{Guid.NewGuid():N}.json");
+string pw03SnapPath = Path.Combine(Path.GetTempPath(), $"aipw-pw03-snap-{Guid.NewGuid():N}.json");
+try
+{
+    var syncVm = new HudViewModel(
+        new PricingCatalogService([verifiedFastEntry]),
+        new UserPreferencesStore(pw03PrefsPath),
+        new SyncSnapshotStore(pw03SnapPath));
 
-var okHandler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
-{
-    Content = new StringContent("""{ "data": [ { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000250", "completion": "0.00001250" } } ] }""", Encoding.UTF8, "application/json")
-});
-using (var okClient = new HttpClient(okHandler))
-{
-    await syncVm.SyncLivePricesAsync(okClient);
-}
-AssertEqual(SyncStatus.Succeeded, syncVm.SyncStatus, "Successful sync sets SyncStatus.Succeeded");
-AssertEqual(CatalogDataOrigin.LiveSynced, syncVm.DataOrigin, "Successful sync sets CatalogDataOrigin.LiveSynced");
-AssertTrue(syncVm.LastSuccessfulSyncAt.HasValue, "Records LastSuccessfulSyncAt");
-AssertEqual(2.50m, syncVm.VisibleModels[0].StandardProvenance.Status == DataVerificationStatus.Verified ? 2.50m : 0m, "Live sync updates price");
+    var okHandler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+    {
+        Content = new StringContent("""{ "data": [ { "id": "anthropic/verified-fast", "pricing": { "prompt": "0.00000250", "completion": "0.00001250" } } ] }""", Encoding.UTF8, "application/json")
+    });
+    using (var okClient = new HttpClient(okHandler))
+    {
+        await syncVm.SyncLivePricesAsync(okClient);
+    }
+    AssertEqual(SyncStatus.Succeeded, syncVm.SyncStatus, "Successful sync sets SyncStatus.Succeeded");
+    AssertEqual(CatalogDataOrigin.LiveSynced, syncVm.DataOrigin, "Successful sync sets CatalogDataOrigin.LiveSynced");
+    AssertTrue(syncVm.LastSuccessfulSyncAt.HasValue, "Records LastSuccessfulSyncAt");
+    AssertEqual(2.50m, syncVm.VisibleModels[0].StandardProvenance.Status == DataVerificationStatus.Verified ? 2.50m : 0m, "Live sync updates price");
 
-var failHandler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Network unreachable"));
-using (var failClient = new HttpClient(failHandler))
-{
-    await syncVm.SyncLivePricesAsync(failClient);
+    var failHandler = new StubHttpMessageHandler(_ => throw new HttpRequestException("Network unreachable"));
+    using (var failClient = new HttpClient(failHandler))
+    {
+        await syncVm.SyncLivePricesAsync(failClient);
+    }
+    AssertEqual(SyncStatus.Failed, syncVm.SyncStatus, "Offline sync sets SyncStatus.Failed");
+    AssertEqual(CatalogDataOrigin.LastValid, syncVm.DataOrigin, "Failed sync after live sync preserves LastValid origin");
+    AssertTrue(syncVm.CanRetrySync, "CanRetrySync is true after failure");
+    AssertTrue(syncVm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase), "StatusText honestly reports sync failure");
+    AssertEqual("$2.50 / $12.50", syncVm.VisibleModels[0].StandardInOutDisplay, "Failed sync retains prior live-synced prices instead of overwriting with bundled data");
 }
-AssertEqual(SyncStatus.Failed, syncVm.SyncStatus, "Offline sync sets SyncStatus.Failed");
-AssertEqual(CatalogDataOrigin.LastValid, syncVm.DataOrigin, "Failed sync after live sync preserves LastValid origin");
-AssertTrue(syncVm.CanRetrySync, "CanRetrySync is true after failure");
-AssertTrue(syncVm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase), "StatusText honestly reports sync failure");
-AssertEqual("$2.50 / $12.50", syncVm.VisibleModels[0].StandardInOutDisplay, "Failed sync retains prior live-synced prices instead of overwriting with bundled data");
+finally
+{
+    if (File.Exists(pw03PrefsPath)) File.Delete(pw03PrefsPath);
+    if (File.Exists(pw03SnapPath)) File.Delete(pw03SnapPath);
+}
 
 // PW-04: CatalogValidator detects duplicates, missing provenance, and impossible values
 var invalidCatalog = new[]
@@ -382,12 +417,14 @@ AssertEqual("tie-b", tieRanked[0].Id, "Cost tie-breaker deterministically prefer
 
 // PW-11: UserPreferencesStore v0.1->v0.2 migration, persistence, and corrupt fallback
 string v1PrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-pw11-v1-{Guid.NewGuid():N}.json");
+string v1SnapPath = Path.Combine(Path.GetTempPath(), $"aipw-pw11-snap-{Guid.NewGuid():N}.json");
 string corruptPrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-pw11-corrupt-{Guid.NewGuid():N}.json");
 try
 {
     File.WriteAllText(v1PrefsPath, """{ "HiddenModelIds": ["gpt-5-mini", "composer-2"] }""");
     var v1Store = new UserPreferencesStore(v1PrefsPath);
-    var v1Vm = new HudViewModel(PricingCatalogService.LoadDefault(), v1Store);
+    var v1SnapStore = new SyncSnapshotStore(v1SnapPath);
+    var v1Vm = new HudViewModel(PricingCatalogService.LoadDefault(), v1Store, v1SnapStore);
     AssertEqual(2, v1Vm.HiddenCount, "v0.1 preferences preserve HiddenModelIds");
     AssertEqual(0.86, v1Vm.BackgroundOpacity, "v0.1 migration applies default opacity");
     AssertEqual(false, v1Vm.StartWithWindows, "StartWithWindows defaults to false");
@@ -404,7 +441,7 @@ try
     v1Vm.HasShownTrayMinimizeNotice = true;
     v1Vm.StartWithWindows = true;
 
-    var v2Vm = new HudViewModel(PricingCatalogService.LoadDefault(), v1Store);
+    var v2Vm = new HudViewModel(PricingCatalogService.LoadDefault(), v1Store, v1SnapStore);
     AssertEqual(2, v2Vm.HiddenCount, "Reloaded v2 preserves HiddenModelIds");
     AssertEqual("Anthropic", v2Vm.SelectedProvider, "Persists SelectedProvider");
     AssertEqual((TaskTier?)TaskTier.Balanced, v2Vm.SelectedTier, "Persists SelectedTier");
@@ -425,6 +462,7 @@ try
 finally
 {
     if (File.Exists(v1PrefsPath)) File.Delete(v1PrefsPath);
+    if (File.Exists(v1SnapPath)) File.Delete(v1SnapPath);
     if (File.Exists(corruptPrefsPath)) File.Delete(corruptPrefsPath);
 }
 
@@ -491,9 +529,13 @@ AssertEqual("4.1 (High)", cbParsed.Models.First(m => m.Id == "gemini-4-carbon").
 AssertEqual((decimal?)49.0m, cbParsed.Models.First(m => m.Id == "deepseek-flash").CursorBenchScore, "CursorBenchParser matches dated model suffix via alias");
 
 string syncPrefsPath = Path.Combine(Path.GetTempPath(), $"aipw-cb-sync-{Guid.NewGuid():N}.json");
+string syncSnapPath = Path.Combine(Path.GetTempPath(), $"aipw-cb-snap-{Guid.NewGuid():N}.json");
 try
 {
-    var cbSyncVm = new HudViewModel(PricingCatalogService.LoadDefault(), new UserPreferencesStore(syncPrefsPath));
+    var cbSyncVm = new HudViewModel(
+        PricingCatalogService.LoadDefault(),
+        new UserPreferencesStore(syncPrefsPath),
+        new SyncSnapshotStore(syncSnapPath));
     using var dualClient = new HttpClient(new StubHttpMessageHandler(req =>
     {
         if (req.RequestUri?.Host.Contains("cursor.com", StringComparison.OrdinalIgnoreCase) == true)
@@ -561,6 +603,7 @@ try
 finally
 {
     if (File.Exists(syncPrefsPath)) File.Delete(syncPrefsPath);
+    if (File.Exists(syncSnapPath)) File.Delete(syncSnapPath);
 }
 
 // AppVersionInfo formatting & assembly version lookup
@@ -778,6 +821,91 @@ finally
 {
     if (File.Exists(vmPrefsPath)) File.Delete(vmPrefsPath);
     if (File.Exists(vmSnapPath)) File.Delete(vmSnapPath);
+}
+
+// SpaceXSI provider unification & OpenRouter batch/alias exclusion
+AssertEqual("SpaceXSI", OpenRouterPriceParser.MapProviderName("x-ai/grok-4.7"), "x-ai slug maps to SpaceXSI");
+AssertEqual("SpaceXSI", OpenRouterPriceParser.MapProviderName("cursor/composer-2.5"), "cursor slug maps to SpaceXSI");
+AssertEqual("SpaceXSI", OpenRouterPriceParser.MapProviderName("spacexsi/grok-5"), "spacexsi slug maps to SpaceXSI");
+AssertEqual("SpaceXSI", OpenRouterPriceParser.MapProviderName("~x-ai/grok-latest"), "tilde x-ai slug maps to SpaceXSI");
+
+string exclusionPayload = """
+{
+  "data": [
+    {
+      "id": "x-ai/grok-4.7",
+      "name": "SpaceXSI: Grok 4.7",
+      "context_length": 500000,
+      "pricing": { "prompt": "0.000002", "completion": "0.000006" }
+    },
+    {
+      "id": "x-ai/grok-4.7:batch",
+      "name": "SpaceXSI: Grok 4.7 (batch)",
+      "context_length": 500000,
+      "pricing": { "prompt": "0.0000016", "completion": "0.0000048" }
+    },
+    {
+      "id": "openai/batch-only-test",
+      "name": "OpenAI: Batch Only Test",
+      "context_length": 128000,
+      "endpoints": ["/api/v1/batches"],
+      "pricing": { "prompt": "0.000001", "completion": "0.000002" }
+    },
+    {
+      "id": "~x-ai/grok-latest",
+      "name": "xAI: Grok Latest",
+      "context_length": 500000,
+      "pricing": { "prompt": "0.000002", "completion": "0.000006" }
+    },
+    {
+      "id": "x-ai/alias-test",
+      "name": "xAI: Alias Test",
+      "context_length": 500000,
+      "alias_target": { "slug": "x-ai/grok-4.7" },
+      "pricing": { "prompt": "0.000002", "completion": "0.000006" }
+    }
+  ]
+}
+""";
+OpenRouterSyncResult exclusionResult = OpenRouterPriceParser.MergeLivePricesDetailed(catalog.AllModels, exclusionPayload);
+AssertTrue(exclusionResult.IsValidPayload, "Exclusion payload with valid model succeeds");
+AssertEqual(1, exclusionResult.AvailableModels.Count, "Excludes :batch, batch-only endpoints, leading ~, and alias_target entries");
+AssertEqual("x-ai/grok-4.7", exclusionResult.AvailableModels[0].FullId, "Retains normal x-ai/grok-4.7 model");
+AssertEqual("SpaceXSI", exclusionResult.AvailableModels[0].Provider, "Candidate provider maps to SpaceXSI");
+AssertEqual(4, exclusionResult.IgnoredCount, "Counts all 4 excluded entries as ignored");
+
+string legacyPrefsPath = Path.Combine(Path.GetTempPath(), $"apw-legacy-prefs-{Guid.NewGuid():N}.json");
+string legacySnapPath = Path.Combine(Path.GetTempPath(), $"apw-legacy-snap-{Guid.NewGuid():N}.json");
+try
+{
+    var legacyPrefStore = new UserPreferencesStore(legacyPrefsPath);
+    legacyPrefStore.Save(new UserPreferences { SelectedProvider = "Cursor" });
+
+    var legacySnapStore = new SyncSnapshotStore(legacySnapPath);
+    legacySnapStore.Save(new SyncSnapshot
+    {
+        AddedModels =
+        [
+            new ModelPricingEntry(
+                "x-ai/grok-4.20", "SpaceXSI: Grok 4.20", "xAI", TaskTier.Balanced,
+                1.25m, null, 2.50m, 2_000_000, "Added from OpenRouter live feed.",
+                OpenRouterId: "x-ai/grok-4.20")
+        ]
+    });
+
+    var legacyVm = new HudViewModel(PricingCatalogService.LoadDefault(), legacyPrefStore, legacySnapStore);
+    AssertEqual("SpaceXSI", legacyVm.SelectedProvider, "Migrates legacy SelectedProvider 'Cursor' to 'SpaceXSI'");
+    AssertTrue(
+        !legacyVm.Providers.Contains("xAI", StringComparer.OrdinalIgnoreCase) &&
+        !legacyVm.Providers.Contains("Cursor", StringComparer.OrdinalIgnoreCase),
+        "Normalizes added model provider so legacy 'xAI' and 'Cursor' tabs do not reappear");
+    var restoredAdded = legacyVm.VisibleModels.First(m => m.Id == "x-ai/grok-4.20");
+    AssertEqual("SpaceXSI", restoredAdded.Provider, "Restored user-added model displays provider SpaceXSI");
+}
+finally
+{
+    if (File.Exists(legacyPrefsPath)) File.Delete(legacyPrefsPath);
+    if (File.Exists(legacySnapPath)) File.Delete(legacySnapPath);
 }
 
 Console.WriteLine($"All tests passed ({passed} assertions).");
