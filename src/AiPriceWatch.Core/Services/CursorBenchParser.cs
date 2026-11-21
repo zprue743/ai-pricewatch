@@ -15,7 +15,8 @@ public sealed record CursorBenchSyncResult(
     bool IsValidPayload,
     int UpdatedCount,
     string BenchmarkVersion,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    IReadOnlyDictionary<string, CursorBenchEntry>? ParsedScores = null);
 
 public static partial class CursorBenchParser
 {
@@ -145,29 +146,12 @@ public static partial class CursorBenchParser
 
         foreach (ModelPricingEntry entry in existingCatalog)
         {
-            CursorBenchEntry? matched = FindBestMatch(entry, bestByModel);
-            if (matched is null)
+            if (TryApplyScore(entry, version, bestByModel, timestamp, out ModelPricingEntry updated))
             {
-                merged.Add(entry);
-                continue;
+                updatedCount++;
             }
 
-            updatedCount++;
-            string versionLabel = string.IsNullOrWhiteSpace(matched.EffortTier)
-                ? version
-                : $"{version} ({matched.EffortTier})";
-
-            merged.Add(entry with
-            {
-                CursorBenchScore = matched.Score,
-                CursorBenchSource = new BenchmarkProvenance(
-                    Publisher: "Cursor",
-                    BenchmarkName: "CursorBench",
-                    Version: versionLabel,
-                    SourceUrl: SourceUrl,
-                    ScoreDate: timestamp,
-                    Status: DataVerificationStatus.Verified)
-            });
+            merged.Add(updated);
         }
 
         if (updatedCount == 0)
@@ -184,7 +168,43 @@ public static partial class CursorBenchParser
             merged,
             IsValidPayload: true,
             UpdatedCount: updatedCount,
-            BenchmarkVersion: version);
+            BenchmarkVersion: version,
+            ParsedScores: bestByModel);
+    }
+
+    public static bool TryApplyScore(
+        ModelPricingEntry entry,
+        string version,
+        IReadOnlyDictionary<string, CursorBenchEntry> bestByModel,
+        DateTimeOffset verifiedAt,
+        out ModelPricingEntry updated)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(bestByModel);
+
+        CursorBenchEntry? matched = FindBestMatch(entry, bestByModel);
+        if (matched is null)
+        {
+            updated = entry;
+            return false;
+        }
+
+        string versionLabel = string.IsNullOrWhiteSpace(matched.EffortTier)
+            ? version
+            : $"{version} ({matched.EffortTier})";
+
+        updated = entry with
+        {
+            CursorBenchScore = matched.Score,
+            CursorBenchSource = new BenchmarkProvenance(
+                Publisher: "Cursor",
+                BenchmarkName: "CursorBench",
+                Version: versionLabel,
+                SourceUrl: SourceUrl,
+                ScoreDate: verifiedAt,
+                Status: DataVerificationStatus.Verified)
+        };
+        return true;
     }
 
     private static (string BaseName, string Effort) SplitModelAndEffort(string label)
@@ -201,41 +221,79 @@ public static partial class CursorBenchParser
         return (label, string.Empty);
     }
 
-    private static CursorBenchEntry? FindBestMatch(
-        ModelPricingEntry entry,
-        IReadOnlyDictionary<string, CursorBenchEntry> bestByModel)
+    private static IEnumerable<string> GetCandidateNames(ModelPricingEntry entry)
     {
-        if (bestByModel.TryGetValue(entry.Name, out CursorBenchEntry? direct))
+        string trimmed = entry.Name.Trim();
+        string withoutProvider = trimmed;
+
+        if (!string.IsNullOrEmpty(trimmed))
         {
-            return direct;
+            yield return trimmed;
+
+            int colonIdx = trimmed.IndexOf(": ", StringComparison.Ordinal);
+            if (colonIdx > 0 && colonIdx + 2 < trimmed.Length)
+            {
+                withoutProvider = trimmed[(colonIdx + 2)..].Trim();
+                if (!string.IsNullOrEmpty(withoutProvider) &&
+                    !string.Equals(withoutProvider, trimmed, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return withoutProvider;
+                }
+            }
+
+            if (withoutProvider.StartsWith("Claude ", StringComparison.OrdinalIgnoreCase) &&
+                withoutProvider.Length > 7)
+            {
+                string withoutClaude = withoutProvider[7..].Trim();
+                if (!string.IsNullOrEmpty(withoutClaude))
+                {
+                    yield return withoutClaude;
+                }
+            }
         }
 
         if (CatalogIdAliases.TryGetValue(entry.Id, out string[]? aliases))
         {
             foreach (string alias in aliases)
             {
-                if (bestByModel.TryGetValue(alias, out CursorBenchEntry? aliasMatch))
+                if (!string.IsNullOrWhiteSpace(alias))
                 {
-                    return aliasMatch;
-                }
-
-                // Handle dated suffixes on CursorBench like "DeepSeek V4.1 Flash 1017"
-                CursorBenchEntry? prefixMatch = bestByModel.Values
-                    .Where(v => v.BaseModelName.StartsWith(alias + " ", StringComparison.OrdinalIgnoreCase))
-                    .OrderByDescending(v => v.Score)
-                    .FirstOrDefault();
-
-                if (prefixMatch is not null)
-                {
-                    return prefixMatch;
+                    yield return alias.Trim();
                 }
             }
         }
+    }
 
-        // Fallback: dated suffix match against catalog Name (e.g., "Model X 1017")
-        return bestByModel.Values
-            .Where(v => v.BaseModelName.StartsWith(entry.Name + " ", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(v => v.Score)
-            .FirstOrDefault();
+    private static CursorBenchEntry? FindBestMatch(
+        ModelPricingEntry entry,
+        IReadOnlyDictionary<string, CursorBenchEntry> bestByModel)
+    {
+        var candidateNames = GetCandidateNames(entry)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (string name in candidateNames)
+        {
+            if (bestByModel.TryGetValue(name, out CursorBenchEntry? direct))
+            {
+                return direct;
+            }
+        }
+
+        // Fallback: dated suffix match on CursorBench (e.g., "DeepSeek V4.1 Flash 1017")
+        foreach (string name in candidateNames)
+        {
+            CursorBenchEntry? prefixMatch = bestByModel.Values
+                .Where(v => v.BaseModelName.StartsWith(name + " ", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(v => v.Score)
+                .FirstOrDefault();
+
+            if (prefixMatch is not null)
+            {
+                return prefixMatch;
+            }
+        }
+
+        return null;
     }
 }
