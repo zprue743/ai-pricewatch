@@ -108,6 +108,12 @@ public static class OpenRouterPriceParser
                     continue;
                 }
 
+                if (IsExcludedOpenRouterModel(fullId, item))
+                {
+                    ignoredCount++;
+                    continue;
+                }
+
                 if (fullIdLookup.ContainsKey(fullId))
                 {
                     duplicateCount++;
@@ -259,6 +265,49 @@ public static class OpenRouterPriceParser
             AvailableModels: availableModels);
     }
 
+    public static bool IsExcludedOpenRouterModel(string fullId, JsonElement item)
+    {
+        if (string.IsNullOrWhiteSpace(fullId))
+        {
+            return true;
+        }
+
+        if (fullId.StartsWith('~') ||
+            fullId.EndsWith(":batch", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (item.TryGetProperty("alias_target", out JsonElement aliasTarget) &&
+            aliasTarget.ValueKind == JsonValueKind.Object)
+        {
+            return true;
+        }
+
+        if (item.TryGetProperty("endpoints", out JsonElement endpoints) &&
+            endpoints.ValueKind == JsonValueKind.Array &&
+            endpoints.GetArrayLength() > 0)
+        {
+            bool allBatch = true;
+            foreach (JsonElement endpoint in endpoints.EnumerateArray())
+            {
+                if (endpoint.ValueKind != JsonValueKind.String ||
+                    !string.Equals(endpoint.GetString(), "/api/v1/batches", StringComparison.OrdinalIgnoreCase))
+                {
+                    allBatch = false;
+                    break;
+                }
+            }
+
+            if (allBatch)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static string MapProviderName(string fullId)
     {
         if (string.IsNullOrWhiteSpace(fullId))
@@ -267,19 +316,33 @@ public static class OpenRouterPriceParser
         }
 
         int slashIndex = fullId.IndexOf('/');
-        string slug = slashIndex > 0 ? fullId[..slashIndex].Trim() : fullId.Trim();
+        string slug = (slashIndex > 0 ? fullId[..slashIndex] : fullId).Trim().TrimStart('~');
 
         return slug.ToLowerInvariant() switch
         {
             "anthropic" => "Anthropic",
             "google" => "Google Gemini",
             "openai" => "OpenAI",
-            "x-ai" => "xAI",
+            "x-ai" or "xai" or "cursor" or "spacexsi" => "SpaceXSI",
             "deepseek" => "DeepSeek",
-            "cursor" => "Cursor",
             _ => string.IsNullOrEmpty(slug)
                 ? "Other"
                 : char.ToUpperInvariant(slug[0]) + slug[1..]
+        };
+    }
+
+    public static string NormalizeProviderName(string? provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+        {
+            return string.Empty;
+        }
+
+        string trimmed = provider.Trim();
+        return trimmed.ToLowerInvariant() switch
+        {
+            "xai" or "x-ai" or "cursor" or "spacexsi" => "SpaceXSI",
+            _ => trimmed
         };
     }
 

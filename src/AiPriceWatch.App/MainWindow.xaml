@@ -810,7 +810,7 @@
                                    FontSize="10"
                                    FontWeight="Bold"
                                    Margin="0,0,0,4" />
-                        <TextBlock Text="• Ctrl+Shift+Space: Global Show / Hide HUD&#x0a;• Ctrl+F: Focus Search&#x0a;• Ctrl+M: Toggle Fast Mode&#x0a;• Alt+1..7: Switch Provider Tabs&#x0a;• Esc: Close Settings or Clear Search"
+                        <TextBlock Text="• Ctrl+Shift+Space: Global Show / Hide HUD&#x0a;• Ctrl+F: Focus Search&#x0a;• Ctrl+M: Toggle Fast Mode&#x0a;• Alt+1..6: Switch Provider Tabs&#x0a;• Esc: Close Settings or Clear Search"
                                    Foreground="#C9D1D9"
                                    FontSize="10"
                                    Margin="0,0,0,10" />
