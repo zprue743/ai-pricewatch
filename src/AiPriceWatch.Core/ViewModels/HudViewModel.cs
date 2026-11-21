@@ -51,6 +51,9 @@ public sealed class HudViewModel : INotifyPropertyChanged
     private HashSet<string> _knownOpenRouterIds = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _newOpenRouterIds = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<OpenRouterModelCandidate> _availableOpenRouterModels = Array.Empty<OpenRouterModelCandidate>();
+    private IReadOnlyDictionary<string, CursorBenchEntry>? _latestCursorBenchScores;
+    private string _latestCursorBenchVersion = "4.0";
+    private DateTimeOffset? _latestCursorBenchSyncedAt;
     private bool _isAddModelsOpen;
     private string _addModelsSearchText = string.Empty;
     private bool _onlyNewCandidates;
@@ -669,11 +672,12 @@ public sealed class HudViewModel : INotifyPropertyChanged
             IReadOnlyList<ModelPricingEntry> mergedModels = result.Models;
             string? cursorBenchHtml = await cursorBenchTask;
             CursorBenchSyncResult? cbResult = null;
+            DateTimeOffset cbVerifiedAt = DateTimeOffset.UtcNow;
             if (cursorBenchHtml is not null)
             {
                 try
                 {
-                    cbResult = CursorBenchParser.MergeLiveScores(mergedModels, cursorBenchHtml);
+                    cbResult = CursorBenchParser.MergeLiveScores(mergedModels, cursorBenchHtml, cbVerifiedAt);
                 }
                 catch
                 {
@@ -684,6 +688,12 @@ public sealed class HudViewModel : INotifyPropertyChanged
             if (cbResult is { IsValidPayload: true })
             {
                 mergedModels = cbResult.Models;
+                if (cbResult.ParsedScores is { Count: > 0 })
+                {
+                    _latestCursorBenchScores = cbResult.ParsedScores;
+                    _latestCursorBenchVersion = cbResult.BenchmarkVersion;
+                    _latestCursorBenchSyncedAt = cbVerifiedAt;
+                }
             }
 
             DateTimeOffset syncedNow = DateTimeOffset.Now;
@@ -831,6 +841,17 @@ public sealed class HudViewModel : INotifyPropertyChanged
             OpenRouterId: candidate.FullId,
             PricingSource: provenance,
             CachedPricingSource: candidate.CachedInputPerMillion.HasValue ? provenance : null);
+
+        if (_latestCursorBenchScores is { Count: > 0 } &&
+            CursorBenchParser.TryApplyScore(
+                entry,
+                _latestCursorBenchVersion,
+                _latestCursorBenchScores,
+                _latestCursorBenchSyncedAt ?? DateTimeOffset.UtcNow,
+                out ModelPricingEntry scoredEntry))
+        {
+            entry = scoredEntry;
+        }
 
         var updated = _catalog.AllModels.ToList();
         updated.Add(entry);

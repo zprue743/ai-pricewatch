@@ -908,6 +908,106 @@ finally
     if (File.Exists(legacySnapPath)) File.Delete(legacySnapPath);
 }
 
+// CursorBench OpenRouter-prefixed matching & immediate score on AddOpenRouterModel
+const string openRouterPrefixCbHtml = """
+    <html><body>
+    <h1>CursorBench 4.1</h1>
+    <table>
+      <tr><td><span class="truncate">Gemini 4 Neon Extra High</span></td><td>65.4<!-- -->%</td></tr>
+      <tr><td><span class="truncate">Gemini 4 Neon High</span></td><td>63.7<!-- -->%</td></tr>
+      <tr><td><span class="truncate">Muse Spark 1.3 Max</span></td><td>41.9<!-- -->%</td></tr>
+      <tr><td><span class="truncate">Opus 5.5 Max</span></td><td>58.1<!-- -->%</td></tr>
+    </table>
+    </body></html>
+    """;
+
+var prefixedEntries = new[]
+{
+    new ModelPricingEntry(
+        "google/gemini-4-neon", "Google: Gemini 4 Neon", "Google Gemini", TaskTier.Reasoning,
+        3.00m, null, 15.00m, 1_000_000, "OpenRouter added", OpenRouterId: "google/gemini-4-neon"),
+    new ModelPricingEntry(
+        "meta/muse-spark-1.3", "Meta: Muse Spark 1.3", "Meta", TaskTier.Balanced,
+        1.00m, null, 3.00m, 256_000, "OpenRouter added", OpenRouterId: "meta/muse-spark-1.3"),
+    new ModelPricingEntry(
+        "anthropic/claude-opus-5.5", "Anthropic: Claude Opus 5.5", "Anthropic", TaskTier.Reasoning,
+        4.00m, null, 20.00m, 500_000, "Non-aliased Opus ID", OpenRouterId: "anthropic/claude-opus-5.5"),
+    new ModelPricingEntry(
+        "meta/muse-spark-1.3-contributor", "Meta: Muse Spark 1.3 Contributor", "Meta", TaskTier.Balanced,
+        1.00m, null, 3.00m, 256_000, "Should not match Muse Spark 1.3", OpenRouterId: "meta/muse-spark-1.3-contributor")
+};
+
+CursorBenchSyncResult prefixedCbResult = CursorBenchParser.MergeLiveScores(prefixedEntries, openRouterPrefixCbHtml);
+AssertTrue(prefixedCbResult.IsValidPayload, "CursorBenchParser matches OpenRouter-prefixed model names");
+AssertEqual(3, prefixedCbResult.UpdatedCount, "Matches Neon, Muse Spark 1.3, and Claude Opus 5.5 without false-matching Contributor");
+
+ModelPricingEntry matchedNeon = prefixedCbResult.Models.First(m => m.Id == "google/gemini-4-neon");
+AssertEqual((decimal?)65.4m, matchedNeon.CursorBenchScore, "Google: Gemini 4 Neon matches Gemini 4 Neon Extra High");
+AssertEqual("4.1 (Extra High)", matchedNeon.CursorBenchSource?.Version, "Records CursorBench 4.1 (Extra High) for Gemini 4 Neon");
+
+ModelPricingEntry matchedMuse = prefixedCbResult.Models.First(m => m.Id == "meta/muse-spark-1.3");
+AssertEqual((decimal?)41.9m, matchedMuse.CursorBenchScore, "Meta: Muse Spark 1.3 matches Muse Spark 1.3 Max");
+
+ModelPricingEntry matchedOpus = prefixedCbResult.Models.First(m => m.Id == "anthropic/claude-opus-5.5");
+AssertEqual((decimal?)58.1m, matchedOpus.CursorBenchScore, "Anthropic: Claude Opus 5.5 strips provider and Claude prefixes");
+
+ModelPricingEntry unmatchedContributor = prefixedCbResult.Models.First(m => m.Id == "meta/muse-spark-1.3-contributor");
+AssertEqual((decimal?)null, unmatchedContributor.CursorBenchScore, "Muse Spark 1.3 Contributor does not falsely match Muse Spark 1.3");
+
+string neonPrefsPath = Path.Combine(Path.GetTempPath(), $"apw-neon-prefs-{Guid.NewGuid():N}.json");
+string neonSnapPath = Path.Combine(Path.GetTempPath(), $"apw-neon-snap-{Guid.NewGuid():N}.json");
+try
+{
+    var neonPrefStore = new UserPreferencesStore(neonPrefsPath);
+    var neonSnapStore = new SyncSnapshotStore(neonSnapPath);
+    var neonVm = new HudViewModel(PricingCatalogService.LoadDefault(), neonPrefStore, neonSnapStore);
+
+    const string neonOpenRouterJson = """
+        {
+          "data": [
+            {
+              "id": "google/gemini-4-neon",
+              "name": "Google: Gemini 4 Neon",
+              "context_length": 1000000,
+              "pricing": { "prompt": "0.000003", "completion": "0.000015" }
+            }
+          ]
+        }
+        """;
+
+    using var neonClient = new HttpClient(new StubHttpMessageHandler(req =>
+    {
+        if (req.RequestUri?.Host.Contains("cursor.com", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(openRouterPrefixCbHtml, Encoding.UTF8, "text/html")
+            };
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(neonOpenRouterJson, Encoding.UTF8, "application/json")
+        };
+    }));
+
+    await neonVm.SyncLivePricesAsync(neonClient);
+    AssertTrue(neonVm.AddOpenRouterModel("google/gemini-4-neon"), "Adds google/gemini-4-neon from synced OpenRouter feed");
+
+    ModelRowViewModel addedNeonRow = neonVm.VisibleModels.First(r => r.Id == "google/gemini-4-neon");
+    AssertEqual("65.4%", addedNeonRow.CursorBenchScoreDisplay, "Added Gemini 4 Neon immediately displays cached CursorBench score");
+    AssertTrue(addedNeonRow.CursorBenchTooltip.Contains("4.1 (Extra High)", StringComparison.Ordinal), "Added Gemini 4 Neon tooltip includes 4.1 (Extra High)");
+
+    var reloadedNeonVm = new HudViewModel(PricingCatalogService.LoadDefault(), neonPrefStore, new SyncSnapshotStore(neonSnapPath));
+    ModelRowViewModel restoredNeonRow = reloadedNeonVm.VisibleModels.First(r => r.Id == "google/gemini-4-neon");
+    AssertEqual("65.4%", restoredNeonRow.CursorBenchScoreDisplay, "Added Gemini 4 Neon CursorBench score persists across restart");
+}
+finally
+{
+    if (File.Exists(neonPrefsPath)) File.Delete(neonPrefsPath);
+    if (File.Exists(neonSnapPath)) File.Delete(neonSnapPath);
+}
+
 Console.WriteLine($"All tests passed ({passed} assertions).");
 
 sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
